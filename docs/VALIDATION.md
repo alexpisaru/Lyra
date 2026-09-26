@@ -1,3 +1,72 @@
+# LYRA CORE 0.2.1 — TARGET LINUX CT: VERIFIED
+
+Collaudo eseguito dall'utente sul CT target reale, dopo il rename (`98ed43a`,
+branch `lite`). Le sezioni successive sono storiche: dove dicono
+«NOT VERIFIED ON TARGET LINUX CT» valevano prima di questo collaudo.
+
+## Ambiente
+
+| | |
+|---|---|
+| Host | Proxmox, kernel 7.0.14-6-pve, x86_64 |
+| CT | LXC Debian GNU/Linux 13 (trixie) |
+| Runtime | Python 3.13.5, glibc 2.41, SQLite 3.46.1 con FTS5, Playwright 1.63.0 (Chromium) |
+| Installazione | `/opt/lyra`, utente `lyra`, `/srv/lyra-vault`, `/srv/lyra-state`, `/srv/lyra-workspace` |
+| Modello | `openbmb/minicpm5-2b:q8_0` su Ollama remoto `http://192.168.1.252:11434` |
+
+## Risultati
+
+| Verifica | Esito |
+|---|---|
+| `lyra --config config/lite.toml check` | `[OK] ollama`, `[OK] memory`, `[OK] knowledge`; browser disattivato nel config base (atteso) |
+| `lyra --config config/lite-chromium.toml check --browser` | `[OK] browser: chromium attivo, intercettazione verificata` |
+| **unit-tests** (suite completa su Linux) | **269 passed, 1 skipped, 0 failed**; l'unico skip è lo smoke browser opt-in della suite normale |
+| **browser-probe-chromium** | **PASS** |
+| **browser-smoke-chromium** | **PASS** (1 passed in 4.81 s) |
+| **live-model** (`scripts/live_acceptance.py`) | **PASS, 9/9** |
+| Esito finale dello script | `COLLAUDO: tutti i passi PASS` |
+
+Su Linux i test symlink/hardlink/FIFO, saltati su Windows, sono stati eseguiti e
+superati (270 test raccolti = 269 passed + 1 skip opt-in).
+
+Prove manuali con il modello reale:
+
+- **calculator**: «Calcola 17 * 23 usando calculator» → tool chiamato con
+  `expression="17 * 23"`, risultato tool `391.0`, risposta finale `391`, `success=true`.
+- **memory**: `memory_store` e `memory_retrieve` funzionano, anche con richiesta
+  in linguaggio naturale (risposta «verde smeraldo»).
+- **knowledge**: `notes_search` su Markdown reale nel vault trova `collaudo-lyra.md`
+  e risponde correttamente «ametista»; il Markdown è la source of truth.
+- **Chromium**: `browser_navigate("https://example.com")` → status 200, titolo
+  «Example Domain», backend `chromium`, nessun fallback.
+
+## Comando di collaudo verificato
+
+```bash
+runuser -u lyra -- bash -c '
+cd /opt/lyra
+BROWSER=chromium \
+CONFIG=config/lite-chromium.toml \
+bash scripts/ct-acceptance.sh
+'
+```
+
+Scoperto durante il collaudo: lo script deve girare **come `lyra`** (altrimenti
+Playwright cerca Chromium nella cache di un altro utente) e con
+`CONFIG=config/lite-chromium.toml` e `BROWSER=chromium` (con il config base il
+browser è disattivato). Solo documentazione aggiornata; nessuna modifica al codice.
+
+## Limiti che restano
+
+- MiniCPM 2B talvolta sintetizza male nella prosa finale un risultato tool
+  corretto. Non è stato modificato il runtime per questo: controllare `tool_results`.
+- Obscura v0.2.3 resta **EXPERIMENTAL** e non è stato collaudato sul CT.
+- Nessun `lyra.service`: Lyra Core è una CLI senza daemon/API persistente; il
+  servizio systemd arriverà con Lyra API.
+- Il firewall egress Proxmox consigliato per il CT resta a cura dell'operatore.
+
+---
+
 # Rename a Lyra — 27 settembre 2026
 
 Solo identità pubblica e operativa: comportamento, routing, pack, sicurezza,

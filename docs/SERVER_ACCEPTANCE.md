@@ -1,20 +1,51 @@
-# Collaudo sul CT Lyra — da eseguire dopo l'installazione
+# Collaudo sul CT Lyra
 
-Nulla di questo è stato eseguito sul CT. Installazione: README. Utente `lyra`,
-sorgente in `/opt/lyra`, venv in `/opt/lyra/.venv`.
+**LYRA CORE 0.2.1 — TARGET LINUX CT: VERIFIED.** Collaudo eseguito sul CT reale
+(Proxmox LXC, Debian 13 trixie, Python 3.13.5, glibc 2.41, SQLite 3.46.1 con
+FTS5, Playwright 1.63.0, Chromium). Esito: tutti i passi PASS; numeri in
+[VALIDATION.md](VALIDATION.md). Installazione: README. Utente `lyra`, sorgente in
+`/opt/lyra`, venv in `/opt/lyra/.venv`.
 
 ## Automatico
 
+Prerequisiti, una volta sola:
+
 ```bash
-runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev]'
-runuser -u lyra -- bash /opt/lyra/scripts/ct-acceptance.sh
-# con browser installato:
-runuser -u lyra -- env BROWSER=chromium CONFIG=config/lite-chromium.toml bash /opt/lyra/scripts/ct-acceptance.sh
-runuser -u lyra -- env BROWSER=obscura CONFIG=config/lite-obscura.toml bash /opt/lyra/scripts/ct-acceptance.sh
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev,browser]'
+/opt/lyra/.venv/bin/python -m playwright install-deps chromium
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m playwright install chromium
 ```
 
-Lo script scrive `acceptance-<data>/` con ambiente (OS, glibc, Python, SQLite/FTS5,
-Playwright), log per passo e `live-acceptance.json`, e stampa PASS/FAIL per:
+Il secondo comando va eseguito come root (installa librerie di sistema); il terzo
+**come `lyra`**, perché Playwright usa la cache dell'utente che lo esegue
+(`/var/lib/lyra/.cache/ms-playwright`).
+
+Collaudo completo, il comando esatto verificato sul CT target:
+
+```bash
+runuser -u lyra -- bash -c '
+cd /opt/lyra
+BROWSER=chromium \
+CONFIG=config/lite-chromium.toml \
+bash scripts/ct-acceptance.sh
+'
+```
+
+Errori tipici:
+
+- lanciato come root o con un altro utente → Playwright cerca Chromium nella
+  cache sbagliata e il probe/smoke fallisce;
+- senza `CONFIG=config/lite-chromium.toml` → il config base ha il browser
+  disattivato e `browser-probe-chromium` fallisce;
+- senza `BROWSER` → probe e smoke browser non vengono eseguiti affatto.
+
+Varianti: senza browser, `runuser -u lyra -- bash -c 'cd /opt/lyra && bash
+scripts/ct-acceptance.sh'`. Obscura (EXPERIMENTAL, server CDP già avviato):
+stesso comando con `BROWSER=obscura` e `CONFIG=config/lite-obscura.toml`.
+
+Lo script scrive `acceptance-<data>/` (ignorata da git) con ambiente (OS, glibc,
+Python, SQLite/FTS5, Playwright), log per passo e `live-acceptance.json`, e
+stampa PASS/FAIL per:
 
 1. suite completa — su Linux devono **passare**, non essere saltati, i test
    symlink/hardlink (vault e file_read) e FIFO; attesi al massimo lo smoke opt-in
@@ -27,6 +58,11 @@ Playwright), log per passo e `live-acceptance.json`, e stampa PASS/FAIL per:
    dal vault, retrieve, (browser).
 
 `SKIP_LIVE=1` salta il passo 4. Un FAIL non va trasformato in successo: annotarlo.
+
+Esito sul CT target: unit-tests 269 passed, 1 skipped (solo lo smoke opt-in),
+0 failed; `lyra-check` PASS; `browser-probe-chromium` PASS; `browser-smoke-chromium`
+PASS (1 passed in 4.81 s); `live-model` PASS (9/9); finale
+`COLLAUDO: tutti i passi PASS`.
 
 ## Manuale (vault reale e Obsidian)
 

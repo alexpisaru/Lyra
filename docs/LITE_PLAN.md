@@ -118,3 +118,14 @@ router deterministico → un pack (0–5 tool) → MiniCPM → ToolExecutor.
 - Collaudo CT separato: `scripts/ct-acceptance.sh`, `scripts/live_acceptance.py`.
 
 Laya resta fuori: potrà solo passare un nome pack a `JarvisSystem.ask`.
+
+## Stato dopo il collaudo Linux
+
+**LYRA CORE 0.2.1 — TARGET LINUX CT: VERIFIED** (Debian 13, Python 3.13.5,
+Chromium; suite 269 passed / 1 skipped / 0 failed, live acceptance 9/9; dettagli
+in VALIDATION.md). Base stabile per il prossimo sviluppo, che resta fuori da 0.2.1:
+
+- Lyra API: primo processo persistente; solo allora verrà aggiunto `lyra.service`
+  (oggi Lyra Core è una CLI e non c'è un daemon da gestire con systemd).
+- GUI, voce, Laya, provider Windows: non iniziati.
+- Obscura resta EXPERIMENTAL finché `check --browser` e smoke non passano sul CT.

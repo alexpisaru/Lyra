@@ -28,14 +28,16 @@ Richiesta ─> router deterministico ─> chat | general | files | memory | know
                                 MiniCPM5 2B (Ollama remoto) ─> ToolExecutor
 ```
 
-Stato in breve (dettagli e numeri in [docs/VALIDATION.md](docs/VALIDATION.md)):
+**LYRA CORE 0.2.1 — TARGET LINUX CT: VERIFIED** (Proxmox LXC, Debian 13 trixie,
+Python 3.13.5, glibc 2.41, SQLite 3.46.1/FTS5, Playwright 1.63.0; Ollama remoto
+`192.168.1.252:11434`, `openbmb/minicpm5-2b:q8_0`). Dettagli in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-| Componente | Stato |
+| Componente | Stato sul CT Linux |
 |---|---|
-| Runtime, pack, memoria, vault | Suite automatica verde su Windows; **NOT VERIFIED ON TARGET LINUX CT** |
-| Vault + MiniCPM reale (runtime su PC, Ollama sul CT) | Tool corretti 7/7; prosa del modello a volte imprecisa |
-| Browser Chromium | **Stabile/predefinito**; smoke reale superato su Windows; NOT VERIFIED ON TARGET LINUX CT |
-| Browser Obscura v0.2.3 | **EXPERIMENTAL**; probe di intercettazione fallito su Windows; NOT VERIFIED ON TARGET LINUX CT |
+| Runtime, pack, memoria, vault | **VERIFIED**: suite 269 passed, 1 skipped (smoke opt-in), 0 failed |
+| Modello reale (calculator, memory, knowledge, browser) | **VERIFIED**: live acceptance 9/9; la prosa di MiniCPM a volte riassume male un risultato tool corretto |
+| Browser Chromium | **VERIFIED, stabile/predefinito**: probe PASS, smoke PASS, nessun fallback |
+| Browser Obscura v0.2.3 | **EXPERIMENTAL**, non collaudato sul CT; su Windows il probe di intercettazione fallisce |
 
 ## Memory vs Knowledge
 
@@ -89,7 +91,7 @@ db_path = "/srv/lyra-state/memory.db"
 
 ## Installazione sul CT Lyra (Debian 12/13 o Ubuntu 24.04, x86_64)
 
-Nulla di questo è stato eseguito sul CT. Requisiti: Python 3.11–3.13
+Procedura verificata sul CT target (Debian 13, Python 3.13.5). Requisiti: Python 3.11–3.13
 (Debian 12 = 3.11, Debian 13 = 3.13, Ubuntu 24.04 = 3.12; Ubuntu 22.04 **no**),
 SQLite con FTS5 (presente nei pacchetti Debian/Ubuntu). Non servono Git, Rust,
 Node o Obsidian. Il modello resta nel CT Ollama: Lyra non scarica modelli.
@@ -185,17 +187,37 @@ certifica l'azione. Esiti incompleti escono con codice 2.
 
 ### Collaudo sul CT
 
-Script separato, non installa nulla (richiede l'extra dev per i test):
+Script separato, non installa nulla. Richiede l'extra dev per i test e, per il
+browser, Chromium già installato **come utente `lyra`** (README, sezione Browser):
 
 ```bash
 runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev]'
-runuser -u lyra -- bash /opt/lyra/scripts/ct-acceptance.sh
-runuser -u lyra -- env BROWSER=chromium CONFIG=config/lite-chromium.toml bash /opt/lyra/scripts/ct-acceptance.sh
 ```
 
+Collaudo completo, quello eseguito con successo sul CT target:
+
+```bash
+runuser -u lyra -- bash -c '
+cd /opt/lyra
+BROWSER=chromium \
+CONFIG=config/lite-chromium.toml \
+bash scripts/ct-acceptance.sh
+'
+```
+
+Va eseguito come `lyra` (Playwright cerca Chromium nella cache dell'utente che
+lo lancia, `/var/lib/lyra/.cache/ms-playwright`) e con `config/lite-chromium.toml`:
+con `config/lite.toml` il browser è disattivato e il passo probe fallisce.
 Esegue suite completa (su Linux girano anche i test symlink/hardlink/FIFO),
-`check`, smoke browser opzionale e `scripts/live_acceptance.py` con il modello
+`check`, probe e smoke Chromium e `scripts/live_acceptance.py` con il modello
 reale su un vault temporaneo. Procedura completa: [docs/SERVER_ACCEPTANCE.md](docs/SERVER_ACCEPTANCE.md).
+
+### Servizio systemd
+
+Lyra Core oggi è una CLI (`ask`, `chat`, `check`): non esiste un daemon o
+un'API persistente da tenere in esecuzione, quindi **non c'è un `lyra.service`**.
+Verrà aggiunto insieme a Lyra API. L'unica unità inclusa è
+`config/obscura.service`, per il backend browser sperimentale.
 
 ## Browser (opzionale)
 

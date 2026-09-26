@@ -6,8 +6,8 @@ soltanto come Playwright ottiene il browser:
 
 | backend | Come | Stato |
 |---|---|---|
-| `chromium` (default) | `chromium.launch(headless=True)` locale | **Stabile**. Smoke reale superato su Windows (Playwright 1.63, headless shell 153). NOT VERIFIED ON TARGET LINUX CT |
-| `obscura` | `chromium.connect_over_cdp(cdp_url)` verso un server Obscura su loopback | **EXPERIMENTAL**. v0.2.3 fallisce il probe di intercettazione su Windows. NOT VERIFIED ON TARGET LINUX CT |
+| `chromium` (default) | `chromium.launch(headless=True)` locale | **Stabile. TARGET LINUX CT: VERIFIED** (Debian 13, Playwright 1.63.0): `check --browser` PASS, smoke PASS, nessun fallback. In precedenza superato anche su Windows (headless shell 153) |
+| `obscura` | `chromium.connect_over_cdp(cdp_url)` verso un server Obscura su loopback | **EXPERIMENTAL**. v0.2.3 fallisce il probe di intercettazione su Windows. Non collaudato sul CT Linux |
 
 ## Fonti Obscura (ricontrollate il 27 settembre 2026)
 
@@ -43,7 +43,7 @@ l'esito Windows sopra non è generalizzato a Linux. Promuovere Obscura solo se
 
 ## Installazione Obscura su Linux x86_64 (opzionale, sperimentale)
 
-Nessun comando è stato eseguito sul server. Come root nel CT Lyra:
+Questi comandi Obscura non sono ancora stati eseguiti sul CT (Chromium sì). Come root nel CT Lyra:
 
 ```bash
 uname -m                      # x86_64
@@ -117,7 +117,7 @@ runuser -u lyra -- env JARVIS_BROWSER_SMOKE=obscura JARVIS_CDP_URL=ws://127.0.0.
 runuser -u lyra -- env JARVIS_BROWSER_SMOKE=chromium .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
 ```
 
-Oppure `BROWSER=obscura bash scripts/ct-acceptance.sh`. Lo smoke non chiama
+Oppure lo script completo, sempre come `lyra` da `/opt/lyra` (vedi SERVER_ACCEPTANCE): `BROWSER=obscura CONFIG=config/lite-obscura.toml bash scripts/ct-acceptance.sh`. Lo smoke non chiama
 Ollama e verifica: probe di intercettazione, example.com reale, form
 deterministico con type/click/extract, rifiuto di 192.168.1.252, WebRTC assente
 (pagina e iframe) senza connessioni TCP verso un listener loopback, e con un

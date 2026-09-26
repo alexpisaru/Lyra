@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Collaudo sul CT Lyra (Linux). NON installa nulla: usa il venv già creato.
-# Uso (come utente lyra, dalla directory del sorgente):
-#   scripts/ct-acceptance.sh                  # suite + check + modello reale (vault temporaneo)
-#   BROWSER=chromium CONFIG=<config con tools.browser=true> scripts/ct-acceptance.sh
-#   BROWSER=obscura CONFIG=config/lite-obscura.toml scripts/ct-acceptance.sh  # CDP già avviato
+# Va eseguito COME UTENTE lyra: Playwright cerca Chromium nella cache dell'utente
+# che lo lancia (/var/lib/lyra/.cache/ms-playwright). Comando verificato sul CT:
+#   runuser -u lyra -- bash -c '
+#   cd /opt/lyra
+#   BROWSER=chromium \
+#   CONFIG=config/lite-chromium.toml \
+#   bash scripts/ct-acceptance.sh
+#   '
+# Varianti (sempre come lyra, da /opt/lyra):
+#   bash scripts/ct-acceptance.sh             # senza browser: suite + check + modello reale
+#   BROWSER=obscura CONFIG=config/lite-obscura.toml bash scripts/ct-acceptance.sh  # EXPERIMENTAL, CDP già avviato
+# Con BROWSER impostato serve un CONFIG con tools.browser=true e lo stesso backend.
 # Variabili: CONFIG (default config/lite.toml), VENV (default .venv), SKIP_LIVE=1.
 # Ogni passo stampa PASS/FAIL; nessun passo fallito viene nascosto. Exit 1 se uno fallisce.
 set -u
