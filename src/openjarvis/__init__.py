@@ -7,16 +7,16 @@ from importlib.metadata import version as _pkg_version
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from openjarvis.sdk import Jarvis, JarvisSystem, MemoryHandle, SystemBuilder
+    from openjarvis.sdk import Jarvis, JarvisSystem, SystemBuilder
 
 try:
-    __version__ = _pkg_version("openjarvis")
+    __version__ = _pkg_version("OpenJarvis-Lite")
 except PackageNotFoundError:  # pragma: no cover — uninstalled source tree
     __version__ = "0.0.0+unknown"
 
-__all__ = ["Jarvis", "JarvisSystem", "MemoryHandle", "SystemBuilder", "__version__"]
+__all__ = ["Jarvis", "JarvisSystem", "SystemBuilder", "__version__"]
 
-_SDK_EXPORTS = {"Jarvis", "JarvisSystem", "MemoryHandle", "SystemBuilder"}
+_SDK_EXPORTS = {"Jarvis", "JarvisSystem", "SystemBuilder"}
 
 
 def __getattr__(name: str) -> Any:

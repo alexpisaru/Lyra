@@ -1,0 +1,38 @@
+# Esempio CT Debian 12/13: directory assolute, browser opzionale spento.
+[engine]
+host = "http://192.168.1.252:11434"
+timeout = 120.0
+
+[intelligence]
+model = "openbmb/minicpm5-2b:q8_0"
+temperature = 0.1
+max_tokens = 512
+num_ctx = 8192
+
+[agent]
+max_turns = 6
+max_tool_calls = 5
+max_tool_output_chars = 1200
+max_prompt_bytes = 12000
+history_chars = 2000
+
+[tools]
+workspace = "/srv/jarvis-workspace"
+enabled = ["calculator", "file_read", "memory_store", "memory_retrieve", "notes_search", "notes_read", "notes_write", "notes_append"]
+browser = false
+# Per attivare: installare .[browser], browser=true e aggiungere a enabled:
+# "browser_navigate", "browser_click", "browser_type", "browser_extract".
+# L'allowlist globale NON viene inviata al modello: un solo pack, <=5 schema.
+
+[knowledge]
+vault_path = "/srv/jarvis-vault"
+
+[memory]
+enabled = true
+db_path = "/srv/jarvis-state/memory.db"
+
+[browser]
+# Obscura resta sperimentale finché passa lo smoke sul target: docs/BROWSER.md.
+backend = "chromium" # "obscura" oppure "chromium"
+cdp_url = "ws://127.0.0.1:9222"
+fallback = "none" # "chromium" ammesso solo se backend="obscura"; avviso esplicito.

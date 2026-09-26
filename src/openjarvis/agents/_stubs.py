@@ -97,14 +97,10 @@ class BaseAgent(ABC):
             try:
                 cfg = load_config()
                 self._temperature = (
-                    temperature
-                    if temperature is not None
-                    else cfg.intelligence.temperature
+                    temperature if temperature is not None else cfg.intelligence.temperature
                 )
                 self._max_tokens = (
-                    max_tokens
-                    if max_tokens is not None
-                    else cfg.intelligence.max_tokens
+                    max_tokens if max_tokens is not None else cfg.intelligence.max_tokens
                 )
             except Exception:
                 self._temperature = (
@@ -122,47 +118,6 @@ class BaseAgent(ABC):
     # Concrete helpers
     # ------------------------------------------------------------------
 
-    def _execution_denied_result(
-        self,
-        required_capabilities: Optional[List[str]] = None,
-        *,
-        operation: str = "agent_run",
-    ) -> Optional[AgentResult]:
-        """Return a denial result when a direct agent operation is forbidden."""
-        required = list(
-            required_capabilities
-            if required_capabilities is not None
-            else self.required_capabilities
-        )
-        if not required:
-            return None
-        result = self._authorize_direct_operation(required, operation=operation)
-        if result.success:
-            return None
-        return AgentResult(
-            content=result.content,
-            tool_results=[result],
-            metadata={"error": True, "security_denied": True},
-        )
-
-    def _authorize_direct_operation(
-        self,
-        required_capabilities: List[str],
-        *,
-        operation: str,
-    ) -> ToolResult:
-        """Authorize a non-BaseTool operation using this runtime identity."""
-        from openjarvis.security.runtime import authorize_secured_operation
-
-        return authorize_secured_operation(
-            operation,
-            required_capabilities,
-            bus=self._bus,
-            capability_policy=self._capability_policy,
-            rate_limiter=self._rate_limiter,
-            agent_id=self._runtime_agent_id,
-        )
-
     def _emit_turn_start(self, input: str) -> None:
         """Publish ``AGENT_TURN_START`` if an event bus is available."""
         if self._bus:
@@ -178,23 +133,6 @@ class BaseAgent(ABC):
             payload.update(data)
             self._bus.publish(EventType.AGENT_TURN_END, payload)
 
-    def _apply_persona(self, system_prompt: Optional[str]) -> Optional[str]:
-        """Append SOUL/MEMORY/USER persona to a self-assembled system prompt.
-
-        Agents like ``monitor_operative`` / ``operative`` build their own
-        system prompt and bypass ``_build_messages`` (and thus the prompt
-        builder). This lets them honor the same persona files as one-shot
-        ``jarvis ask`` (#376) by *appending* persona to — never replacing —
-        their specialized instructions. No-op when no ``prompt_builder`` is
-        wired or no persona files exist.
-        """
-        if self._prompt_builder is None:
-            return system_prompt
-        persona = self._prompt_builder.persona_sections()
-        if not persona:
-            return system_prompt
-        return f"{system_prompt}\n\n{persona}" if system_prompt else persona
-
     def _build_messages(
         self,
         input: str,
@@ -208,9 +146,7 @@ class BaseAgent(ABC):
         conversation messages, and finally the user input.
         """
         messages: list[Message] = []
-        context_messages = (
-            list(context.conversation.messages) if context is not None else []
-        )
+        context_messages = list(context.conversation.messages) if context is not None else []
         # Check if the context already supplies a system message
         _context_has_system = (
             context
@@ -238,8 +174,7 @@ class BaseAgent(ABC):
         # slot or more than one system message. Empty system messages must be
         # removed too, otherwise they can leave a second system entry behind.
         identity_already_applied = any(
-            message.role == Role.SYSTEM
-            and message.metadata.get("openjarvis_identity_prompt")
+            message.role == Role.SYSTEM and message.metadata.get("openjarvis_identity_prompt")
             for message in context_messages
         )
         system_parts = []
@@ -250,13 +185,9 @@ class BaseAgent(ABC):
             for message in context_messages
             if message.role == Role.SYSTEM and message.text
         )
-        context_messages = [
-            message for message in context_messages if message.role != Role.SYSTEM
-        ]
+        context_messages = [message for message in context_messages if message.role != Role.SYSTEM]
         if system_parts:
-            messages.append(
-                Message(role=Role.SYSTEM, content="\n\n".join(system_parts))
-            )
+            messages.append(Message(role=Role.SYSTEM, content="\n\n".join(system_parts)))
         if context_messages:
             messages.extend(context_messages)
         messages.append(Message(role=Role.USER, content=input))
@@ -329,41 +260,6 @@ class BaseAgent(ABC):
             turns=turns,
             metadata=md,
         )
-
-    def _check_continuation(
-        self,
-        result: dict,
-        messages: list,
-        *,
-        max_continuations: int = 2,
-    ) -> str:
-        """Re-prompt on ``finish_reason == "length"`` to get complete output.
-
-        Returns the concatenated content after up to *max_continuations*
-        follow-up generate calls.
-        """
-        content = result.get("content", "")
-        finish_reason = result.get("finish_reason", "")
-
-        for _ in range(max_continuations):
-            if finish_reason != "length":
-                break
-            # Append what we have so far and ask the model to continue
-            from openjarvis.core.types import Message, Role
-
-            messages.append(Message(role=Role.ASSISTANT, content=content))
-            messages.append(
-                Message(
-                    role=Role.USER,
-                    content="Continue from where you left off.",
-                ),
-            )
-            cont = self._generate(messages)
-            continuation = cont.get("content", "")
-            content += continuation
-            finish_reason = cont.get("finish_reason", "")
-
-        return content
 
     @staticmethod
     def _strip_think_tags(text: str) -> str:
@@ -502,9 +398,7 @@ class ToolUsingAgent(BaseAgent):
         """Seed executor taint from the complete conversation for this run."""
         executor = getattr(self, "_executor", None)
         if executor is not None:
-            executor.begin_session(
-                [message.text for message in messages if message.text]
-            )
+            executor.begin_session([message.text for message in messages if message.text])
 
 
 __all__ = ["AgentContext", "AgentResult", "BaseAgent", "ToolUsingAgent"]

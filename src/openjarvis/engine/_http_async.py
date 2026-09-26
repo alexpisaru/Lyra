@@ -120,8 +120,7 @@ class AsyncHTTPEngineMixin:
             raise EngineContextLengthError(_CONTEXT_LENGTH_USER_MESSAGE)
         detail_suffix = f": {detail}" if detail else ""
         raise EngineConnectionError(
-            f"{self.engine_id} engine at {self._host} returned HTTP "
-            f"{status}{detail_suffix}"
+            f"{self.engine_id} engine at {self._host} returned HTTP {status}{detail_suffix}"
         )
 
 

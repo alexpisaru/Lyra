@@ -1,165 +1,113 @@
-"""SQLite/FTS5 memory backend — zero-dependency default."""
+"""OpenJarvis MemoryBackend backed by stdlib SQLite/FTS5, without Rust."""
 
 from __future__ import annotations
-
 import json
+import re
 import sqlite3
+import threading
+import time
+import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-from openjarvis.core.events import EventType, get_event_bus
 from openjarvis.core.registry import MemoryRegistry
-from openjarvis.tools.storage._stubs import (
-    MemoryBackend,
-    MemoryBackendUnavailable,
-    RetrievalResult,
-)
-
-
-def _check_fts5(conn: sqlite3.Connection) -> bool:
-    """Return True if the SQLite build includes FTS5."""
-    try:
-        opts = conn.execute("PRAGMA compile_options").fetchall()
-        return any("FTS5" in o[0].upper() for o in opts)
-    except sqlite3.Error:
-        return False
+from openjarvis.tools.storage._stubs import MemoryBackend, RetrievalResult
 
 
 @MemoryRegistry.register("sqlite")
 class SQLiteMemory(MemoryBackend):
-    """Full-text search memory backend using SQLite FTS5.
+    """Explicit notes only; no embeddings, learning, or automatic prompt injection."""
 
-    Uses the built-in ``sqlite3`` module — no extra dependencies.
-    """
+    backend_id = "sqlite"
 
-    backend_id: str = "sqlite"
-
-    def __init__(self, db_path: str | Path = "") -> None:
+    def __init__(self, db_path=""):
         if not db_path:
             from openjarvis.core.config import DEFAULT_CONFIG_DIR
 
-            db_path = str(DEFAULT_CONFIG_DIR / "memory.db")
-
+            db_path = DEFAULT_CONFIG_DIR / "memory.db"
         self._db_path = str(db_path)
-
-        from openjarvis._rust_bridge import get_rust_module
-
-        # The Rust backend is mandatory and there is no Python fallback. When
-        # the extension is missing from *this* venv, ``get_rust_module`` raises
-        # ImportError; translate it into a clear, actionable error so callers
-        # never degrade to a misleading "Failed to index path" or a silent
-        # no-op (see #502).
+        if self._db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        self._conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=10)
         try:
-            _rust = get_rust_module()
-        except ImportError as exc:
-            raise MemoryBackendUnavailable() from exc
-        self._rust_impl = _rust.SQLiteMemory(self._db_path)
-        self._conn = None  # type: ignore[assignment]
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._create_tables()
+        except BaseException:
+            self._conn.close()
+            raise
 
-    def _create_tables(self) -> None:
+    def _create_tables(self):
+        # Dedicated Lite tables: no implicit migration of an old Rust DB.
         self._conn.executescript("""
-            CREATE TABLE IF NOT EXISTS documents (
-                id       TEXT PRIMARY KEY,
-                content  TEXT NOT NULL,
-                source   TEXT NOT NULL DEFAULT '',
-                metadata TEXT NOT NULL DEFAULT '{}',
-                created_at REAL NOT NULL
+            CREATE TABLE IF NOT EXISTS lite_notes (
+                id TEXT PRIMARY KEY, content TEXT NOT NULL,
+                source TEXT NOT NULL, metadata TEXT NOT NULL, created_at REAL NOT NULL
             );
-
-            CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts
-            USING fts5(
-                content,
-                source,
-                tokenize='porter unicode61'
-            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS lite_notes_fts
+                USING fts5(content, source, content='lite_notes', content_rowid='rowid');
+            CREATE TRIGGER IF NOT EXISTS lite_notes_ai AFTER INSERT ON lite_notes BEGIN
+                INSERT INTO lite_notes_fts(rowid, content, source)
+                    VALUES (new.rowid, new.content, new.source);
+            END;
+            CREATE TRIGGER IF NOT EXISTS lite_notes_ad AFTER DELETE ON lite_notes BEGIN
+                INSERT INTO lite_notes_fts(lite_notes_fts, rowid, content, source)
+                    VALUES ('delete', old.rowid, old.content, old.source);
+            END;
         """)
 
-    def store(
-        self,
-        content: str,
-        *,
-        source: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Persist *content* and return a unique document id."""
-        meta_json = json.dumps(metadata) if metadata else None
-        doc_id = self._rust_impl.store(content, source, meta_json)
-        bus = get_event_bus()
-        bus.publish(
-            EventType.MEMORY_STORE,
-            {
-                "backend": self.backend_id,
-                "doc_id": doc_id,
-                "source": source,
-            },
+    def _insert(self, content, source, metadata):
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Cannot store an empty note")
+        doc_id = uuid.uuid4().hex
+        self._conn.execute(
+            "INSERT INTO lite_notes VALUES (?, ?, ?, ?, ?)",
+            (doc_id, content, source, json.dumps(metadata or {}), time.time()),
         )
         return doc_id
 
-    def replace_source(
-        self,
-        source: str,
-        documents: List[tuple[str, Optional[Dict[str, Any]]]],
-    ) -> List[str]:
-        """Atomically replace all documents associated with *source*."""
-        payload = [
-            (content, json.dumps(metadata) if metadata else None)
-            for content, metadata in documents
-        ]
-        doc_ids = self._rust_impl.replace_source(source, payload)
-        bus = get_event_bus()
-        for doc_id in doc_ids:
-            bus.publish(
-                EventType.MEMORY_STORE,
-                {
-                    "backend": self.backend_id,
-                    "doc_id": doc_id,
-                    "source": source,
-                },
-            )
-        return doc_ids
+    def store(self, content, *, source="", metadata=None):
+        with self._lock, self._conn:
+            return self._insert(content, source, metadata)
 
-    def retrieve(
-        self,
-        query: str,
-        *,
-        top_k: int = 5,
-        **kwargs: Any,
-    ) -> List[RetrievalResult]:
-        """Search via FTS5 MATCH with BM25 ranking — always via Rust backend."""
-        if not query.strip():
+    def replace_source(self, source, documents):
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM lite_notes WHERE source=?", (source,))
+            return [self._insert(content, source, metadata) for content, metadata in documents]
+
+    def retrieve(self, query, *, top_k=3, **kwargs):
+        if not 1 <= top_k <= 20:
+            raise ValueError("top_k must be between 1 and 20")
+        words = re.findall(r"\w+", query, flags=re.UNICODE)[:30]
+        if not words:
             return []
+        match = " OR ".join('"' + word + '"' for word in words)
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT n.content, n.source, n.metadata, bm25(lite_notes_fts)
+                FROM lite_notes_fts JOIN lite_notes n ON n.rowid=lite_notes_fts.rowid
+                WHERE lite_notes_fts MATCH ? ORDER BY bm25(lite_notes_fts) LIMIT ?
+            """,
+                (match, top_k),
+            ).fetchall()
+        return [
+            RetrievalResult(
+                content=row[0], source=row[1], metadata=json.loads(row[2]), score=-row[3]
+            )
+            for row in rows
+        ]
 
-        from openjarvis._rust_bridge import retrieval_results_from_json
+    def delete(self, doc_id):
+        with self._lock, self._conn:
+            return self._conn.execute("DELETE FROM lite_notes WHERE id=?", (doc_id,)).rowcount > 0
 
-        results = retrieval_results_from_json(
-            self._rust_impl.retrieve(query, top_k),
-        )
-        bus = get_event_bus()
-        bus.publish(
-            EventType.MEMORY_RETRIEVE,
-            {
-                "backend": self.backend_id,
-                "query": query,
-                "num_results": len(results),
-            },
-        )
-        return results
+    def clear(self):
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM lite_notes")
 
-    def delete(self, doc_id: str) -> bool:
-        """Delete a document by id — always via Rust backend."""
-        return self._rust_impl.delete(doc_id)
+    def count(self):
+        with self._lock:
+            return self._conn.execute("SELECT count(*) FROM lite_notes").fetchone()[0]
 
-    def clear(self) -> None:
-        """Remove all stored documents — always via Rust backend."""
-        self._rust_impl.clear()
-
-    def count(self) -> int:
-        """Return the number of stored documents — always via Rust backend."""
-        return self._rust_impl.count()
-
-    def close(self) -> None:
-        """Close the database connection."""
-        pass
-
-
-__all__ = ["SQLiteMemory"]
+    def close(self):
+        with self._lock:
+            self._conn.close()

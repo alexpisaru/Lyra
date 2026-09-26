@@ -1,21 +1,9 @@
-"""OrchestratorAgent — multi-turn agent with tool-calling loop.
-
-Supports two modes:
-
-- **function_calling** (default): Uses OpenAI-format tool definitions and
-  parses ``tool_calls`` from the engine response.
-- **structured**: Uses a THOUGHT/TOOL/INPUT/FINAL_ANSWER text format
-  (like ReAct) with a canonical system prompt from the orchestrator
-  prompt registry.  This is the format used by the SFT/GRPO training
-  pipelines, making the Orchestrator a distinctive trainable agent type.
-"""
+"""OpenJarvis function-calling orchestrator, reduced for a local 2B model."""
 
 from __future__ import annotations
 
-import concurrent.futures
 import json
 import logging
-import re
 from typing import Any, Callable, List, Optional
 
 from openjarvis.agents._stubs import AgentContext, AgentResult, ToolUsingAgent
@@ -30,19 +18,7 @@ logger = logging.getLogger(__name__)
 
 @AgentRegistry.register("orchestrator")
 class OrchestratorAgent(ToolUsingAgent):
-    """Multi-turn agent that routes between tools and the LLM.
-
-    Implements a tool-calling loop:
-    1. Send messages with tool definitions to the engine.
-    2. If the response contains tool_calls, execute them and loop.
-    3. If no tool_calls, return the final answer.
-    4. Stop after ``max_turns`` iterations.
-
-    In **structured** mode the agent instead uses a
-    ``THOUGHT: / TOOL: / INPUT: / FINAL_ANSWER:`` text protocol
-    identical to the format used by the orchestrator SFT/GRPO
-    training pipelines.
-    """
+    """Bounded sequential tool loop over an already selected capability pack."""
 
     agent_id = "orchestrator"
     _default_temperature = 0.7
@@ -59,15 +35,18 @@ class OrchestratorAgent(ToolUsingAgent):
         max_turns: Optional[int] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        mode: str = "function_calling",
         system_prompt: Optional[str] = None,
         prompt_builder: Optional[Any] = None,
-        parallel_tools: bool = True,
         interactive: bool = False,
         confirm_callback=None,
         capability_policy: Optional[Any] = None,
         agent_id: Optional[str] = None,
         rate_limiter: Optional[Any] = None,
+        engine_options: Optional[dict] = None,
+        max_tool_calls: int = 5,
+        max_tool_output_chars: int = 1200,
+        max_prompt_bytes: int = 12000,
+        require_tool_use: bool = False,
         before_tool_call: Optional[Callable[[str, dict[str, Any]], bool]] = None,
     ) -> None:
         super().__init__(
@@ -81,13 +60,19 @@ class OrchestratorAgent(ToolUsingAgent):
             interactive=interactive,
             confirm_callback=confirm_callback,
             prompt_builder=prompt_builder,
+            loop_guard_config={"max_identical_calls": 2, "warn_before_block": False},
             capability_policy=capability_policy,
             agent_id=agent_id,
             rate_limiter=rate_limiter,
         )
-        self._mode = mode
+        self._engine_options = engine_options or {}
+        self._max_tool_calls = max_tool_calls
+        self._max_tool_output_chars = max_tool_output_chars
+        self._max_prompt_bytes = max_prompt_bytes
+        self._require_tool_use = require_tool_use
+        if len(self._tools) > 5:
+            raise ValueError("Lite accepts at most five tools per turn")
         self._system_prompt = system_prompt
-        self._parallel_tools = parallel_tools
         self._before_tool_call = before_tool_call
 
     def run(
@@ -96,8 +81,6 @@ class OrchestratorAgent(ToolUsingAgent):
         context: Optional[AgentContext] = None,
         **kwargs: Any,
     ) -> AgentResult:
-        if self._mode == "structured":
-            return self._run_structured(input, context, **kwargs)
         return self._run_function_calling(input, context, **kwargs)
 
     # ------------------------------------------------------------------
@@ -141,207 +124,6 @@ class OrchestratorAgent(ToolUsingAgent):
             return None
         return self._governance_denial(tc.name, "policy denied the call")
 
-    # ------------------------------------------------------------------
-    # Structured mode (THOUGHT/TOOL/INPUT/FINAL_ANSWER)
-    # ------------------------------------------------------------------
-
-    def _run_structured(
-        self,
-        input: str,
-        context: Optional[AgentContext] = None,
-        **kwargs: Any,
-    ) -> AgentResult:
-        self._emit_turn_start(input)
-
-        # Build system prompt
-        if self._system_prompt:
-            sys_prompt = self._system_prompt
-        else:
-            from openjarvis.learning.intelligence.orchestrator.prompt_registry import (
-                build_system_prompt,
-            )
-
-            sys_prompt = build_system_prompt(tools=self._tools)
-
-        messages = self._build_messages(input, context, system_prompt=sys_prompt)
-
-        all_tool_results: list[ToolResult] = []
-        turns = 0
-
-        for _turn in range(self._max_turns):
-            turns += 1
-
-            if self._loop_guard:
-                messages = self._loop_guard.compress_context(messages)
-
-            result = self._generate(messages)
-            content = result.get("content", "")
-
-            parsed = self._parse_structured_response(content)
-
-            # FINAL_ANSWER -> done
-            if parsed["final_answer"]:
-                self._emit_turn_end(turns=turns)
-                return AgentResult(
-                    content=parsed["final_answer"],
-                    tool_results=all_tool_results,
-                    turns=turns,
-                )
-
-            # TOOL -> execute
-            if parsed["tool"]:
-                messages.append(Message(role=Role.ASSISTANT, content=content))
-
-                tool_call = ToolCall(
-                    id=f"orch_{turns}",
-                    name=parsed["tool"],
-                    arguments=self._normalize_structured_tool_input(
-                        parsed["tool"],
-                        parsed["input"],
-                    ),
-                )
-                denial = self._check_tool_allowed(tool_call)
-                if denial is not None:
-                    tool_result = denial
-                else:
-                    tool_result = self._executor.execute(tool_call)
-                all_tool_results.append(tool_result)
-
-                if tool_result.success:
-                    observation = f"Observation: {tool_result.content}"
-                else:
-                    observation = (
-                        f"Observation: Tool '{tool_result.tool_name}' failed: "
-                        f"{tool_result.content}"
-                    )
-                messages.append(Message(role=Role.USER, content=observation))
-                continue
-
-            # Neither -> treat content as final answer
-            self._emit_turn_end(turns=turns)
-            return AgentResult(
-                content=content,
-                tool_results=all_tool_results,
-                turns=turns,
-            )
-
-        # Max turns exceeded
-        return self._max_turns_result(all_tool_results, turns)
-
-    def _normalize_structured_tool_input(
-        self,
-        tool_name: str,
-        raw_input: str,
-    ) -> str:
-        """Map unambiguous structured text input to a string parameter."""
-        if not raw_input:
-            return "{}"
-
-        try:
-            parsed_input = json.loads(raw_input)
-        except json.JSONDecodeError:
-            invalid_json = True
-            string_value = raw_input
-        else:
-            invalid_json = False
-            if isinstance(parsed_input, dict):
-                return raw_input
-            # INPUT is a text protocol. A non-object JSON value such as 42,
-            # true, null, or [1, 2] may still be the intended text for a tool's
-            # string parameter. Quoted JSON strings are decoded to remove only
-            # their surrounding quotes; other values retain their source text.
-            string_value = parsed_input if isinstance(parsed_input, str) else raw_input
-
-        tool_spec = None
-        for candidate in reversed(self._tools):
-            candidate_spec = candidate.spec
-            if candidate_spec.name == tool_name:
-                tool_spec = candidate_spec
-                break
-        if tool_spec is None:
-            return raw_input
-
-        parameters = tool_spec.parameters
-        parameter_container_type = parameters.get("type")
-        if parameter_container_type not in (None, "object"):
-            return raw_input
-
-        properties = parameters.get("properties", {})
-        required = parameters.get("required", [])
-        if not isinstance(properties, dict) or not isinstance(required, list):
-            return raw_input
-
-        if len(required) == 1 and required[0] in properties:
-            parameter_name = required[0]
-        elif not required and len(properties) == 1:
-            parameter_name = next(iter(properties))
-        else:
-            return raw_input
-
-        parameter_schema = properties[parameter_name]
-        if not isinstance(parameter_schema, dict):
-            return raw_input
-        parameter_type = parameter_schema.get("type")
-        accepts_string = parameter_type == "string" or (
-            isinstance(parameter_type, list) and "string" in parameter_type
-        )
-        if not accepts_string:
-            return raw_input
-
-        allow_object_text = (
-            tool_spec.metadata.get("structured_allow_object_text") is True
-        )
-        starts_like_object = raw_input.lstrip("\ufeff \t\r\n").startswith("{")
-        if invalid_json and starts_like_object and not allow_object_text:
-            return raw_input
-
-        return json.dumps({parameter_name: string_value})
-
-    @staticmethod
-    def _parse_structured_response(text: str) -> dict:
-        """Parse THOUGHT/TOOL/INPUT/FINAL_ANSWER from model output."""
-        result = {
-            "thought": "",
-            "tool": "",
-            "input": "",
-            "final_answer": "",
-        }
-
-        thought_match = re.search(
-            r"THOUGHT:\s*(.+?)(?=\nTOOL:|\nFINAL[_ ]?ANSWER:|\Z)",
-            text,
-            re.DOTALL | re.IGNORECASE,
-        )
-        if thought_match:
-            result["thought"] = thought_match.group(1).strip()
-
-        final_match = re.search(
-            r"FINAL[_ ]?ANSWER:\s*(.+)",
-            text,
-            re.DOTALL | re.IGNORECASE,
-        )
-        if final_match:
-            result["final_answer"] = final_match.group(1).strip()
-            return result
-
-        tool_match = re.search(r"TOOL:\s*(.+)", text, re.IGNORECASE)
-        if tool_match:
-            result["tool"] = tool_match.group(1).strip()
-
-        input_match = re.search(
-            r"INPUT:\s*(.+?)(?=\nTHOUGHT:|\nTOOL:|\nFINAL|\Z)",
-            text,
-            re.DOTALL | re.IGNORECASE,
-        )
-        if input_match:
-            result["input"] = input_match.group(1).strip()
-
-        return result
-
-    # ------------------------------------------------------------------
-    # Function-calling mode (original behaviour)
-    # ------------------------------------------------------------------
-
     def _run_function_calling(
         self,
         input: str,
@@ -362,6 +144,11 @@ class OrchestratorAgent(ToolUsingAgent):
 
         all_tool_results: list[ToolResult] = []
         turns = 0
+        executed_calls = 0
+        stored_notes = set()
+        tool_repair_attempted = False
+        if self._loop_guard:
+            self._loop_guard.reset()
         total_prompt_tokens = 0
         total_completion_tokens = 0
 
@@ -376,6 +163,21 @@ class OrchestratorAgent(ToolUsingAgent):
             if openai_tools:
                 gen_kwargs["tools"] = openai_tools
 
+            from openjarvis.engine._base import messages_to_dicts
+
+            prompt_size = len(
+                json.dumps(
+                    {"messages": messages_to_dicts(messages), "tools": openai_tools},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            )
+            if prompt_size > self._max_prompt_bytes:
+                return AgentResult(
+                    content="Contesto troppo lungo: dividi la richiesta in passi.",
+                    tool_results=all_tool_results,
+                    turns=turns - 1,
+                    metadata={"context_limit": True},
+                )
             result = self._generate(messages, **gen_kwargs)
 
             # Accumulate token usage
@@ -388,7 +190,27 @@ class OrchestratorAgent(ToolUsingAgent):
 
             # No tool calls -> check continuation, then final answer
             if not raw_tool_calls:
-                content = self._check_continuation(result, messages)
+                if self._require_tool_use and not any(r.success for r in all_tool_results):
+                    if not tool_repair_attempted and not all_tool_results:
+                        tool_repair_attempted = True
+                        messages.append(
+                            Message(
+                                role=Role.USER,
+                                content=(
+                                    "Non hai ancora consultato gli strumenti. "
+                                    "Esegui ora il tool pertinente alla richiesta, "
+                                    "poi rispondi usando il suo risultato."
+                                ),
+                            )
+                        )
+                        continue
+                    return AgentResult(
+                        content="Non ho ottenuto una verifica dagli strumenti. Non posso confermare il risultato.",
+                        tool_results=all_tool_results,
+                        turns=turns,
+                        metadata={"missing_tool_use": True},
+                    )
+                content = result.get("content", "")
                 content = self._strip_think_tags(content)
                 self._emit_turn_end(turns=turns, content_length=len(content))
                 return AgentResult(
@@ -398,16 +220,43 @@ class OrchestratorAgent(ToolUsingAgent):
                     metadata={
                         "prompt_tokens": total_prompt_tokens,
                         "completion_tokens": total_completion_tokens,
+                        "truncated": result.get("finish_reason") == "length",
                         "total_tokens": total_prompt_tokens + total_completion_tokens,
                     },
                 )
 
+            if not isinstance(raw_tool_calls, list) or any(
+                not isinstance(tc, dict) or not isinstance(tc.get("name"), str)
+                for tc in raw_tool_calls
+            ):
+                return AgentResult(
+                    content="Risposta tool non valida dal modello.",
+                    tool_results=all_tool_results,
+                    turns=turns,
+                    metadata={"invalid_tool_calls": True},
+                )
+            if len(raw_tool_calls) > 1:
+                # Reject the whole batch: no partial side effects, no dangling tool messages.
+                messages.append(Message(role=Role.USER, content="Chiama un solo tool alla volta."))
+                continue
+            if executed_calls >= self._max_tool_calls:
+                return AgentResult(
+                    content="Limite di chiamate tool raggiunto. Richiesta incompleta.",
+                    tool_results=all_tool_results,
+                    turns=turns,
+                    metadata={"tool_call_limit": True},
+                )
+            executed_calls += 1
             # Build ToolCall objects from raw dicts
             tool_calls = [
                 ToolCall(
-                    id=tc.get("id", f"call_{i}"),
+                    id=f"call_{turns}_{i}",
                     name=tc.get("name", ""),
-                    arguments=tc.get("arguments", "{}"),
+                    arguments=(
+                        json.dumps(tc.get("arguments"))
+                        if isinstance(tc.get("arguments"), dict)
+                        else tc.get("arguments", "{}")
+                    ),
                 )
                 for i, tc in enumerate(raw_tool_calls)
             ]
@@ -422,114 +271,89 @@ class OrchestratorAgent(ToolUsingAgent):
             )
 
             # Execute each tool (with loop guard check) and append results
-            if self._parallel_tools and len(tool_calls) > 1:
-                # Governance callbacks often wrap stateful policy engines and
-                # are not assumed to be thread-safe. Evaluate them in request
-                # order before dispatching the approved tool work in parallel.
-                results_map: dict[int, tuple[ToolCall, ToolResult]] = {}
-                approved_calls: list[ToolCall] = []
-                for tc in tool_calls:
+            # Sequential execution
+            for tc in tool_calls:
+                # Never repeat the same successful memory write in one request.
+                try:
+                    note_key = json.dumps(json.loads(tc.arguments), sort_keys=True)
+                except (TypeError, ValueError):
+                    note_key = str(tc.arguments)
+                if tc.name == "memory_store" and note_key in stored_notes:
+                    denial = ToolResult(
+                        tool_name=tc.name, content="Nota già salvata.", success=False
+                    )
+                else:
                     denial = self._check_tool_allowed(tc)
-                    if denial is None:
-                        approved_calls.append(tc)
-                    else:
-                        results_map[id(tc)] = (tc, denial)
-
-                def _exec_tool(tc: ToolCall) -> tuple:
-                    if self._loop_guard:
-                        verdict = self._loop_guard.check_call(
-                            tc.name,
-                            tc.arguments,
-                        )
-                        if verdict.blocked:
-                            return tc, ToolResult(
-                                tool_name=tc.name,
-                                content=f"Loop guard: {verdict.reason}",
-                                success=False,
-                            )
-                    return tc, self._executor.execute(tc)
-
-                if approved_calls:
-                    with concurrent.futures.ThreadPoolExecutor(
-                        max_workers=len(approved_calls),
-                    ) as pool:
-                        futures = {
-                            pool.submit(_exec_tool, tc): tc for tc in approved_calls
-                        }
-                        for future in concurrent.futures.as_completed(futures):
-                            tc_orig = futures[future]
-                            results_map[id(tc_orig)] = future.result()
-
-                # Append results in original order
-                for tc in tool_calls:
-                    _, tool_result = results_map[id(tc)]
-                    all_tool_results.append(tool_result)
+                # Governance hook check before execution
+                if denial is not None:
+                    all_tool_results.append(denial)
                     messages.append(
                         Message(
                             role=Role.TOOL,
-                            content=tool_result.content,
+                            content=denial.content,
                             tool_call_id=tc.id,
                             name=tc.name,
                         )
                     )
-            else:
-                # Sequential execution
-                for tc in tool_calls:
-                    # Governance hook check before execution
-                    denial = self._check_tool_allowed(tc)
-                    if denial is not None:
-                        all_tool_results.append(denial)
+                    continue
+
+                # Loop guard check before execution
+                if self._loop_guard:
+                    verdict = self._loop_guard.check_call(
+                        tc.name,
+                        tc.arguments,
+                    )
+                    if verdict.blocked:
+                        tool_result = ToolResult(
+                            tool_name=tc.name,
+                            content=f"Loop guard: {verdict.reason}",
+                            success=False,
+                        )
+                        all_tool_results.append(tool_result)
                         messages.append(
                             Message(
                                 role=Role.TOOL,
-                                content=denial.content,
+                                content=tool_result.content,
                                 tool_call_id=tc.id,
                                 name=tc.name,
                             )
                         )
                         continue
 
-                    # Loop guard check before execution
-                    if self._loop_guard:
-                        verdict = self._loop_guard.check_call(
-                            tc.name,
-                            tc.arguments,
-                        )
-                        if verdict.blocked:
-                            tool_result = ToolResult(
-                                tool_name=tc.name,
-                                content=f"Loop guard: {verdict.reason}",
-                                success=False,
-                            )
-                            all_tool_results.append(tool_result)
-                            messages.append(
-                                Message(
-                                    role=Role.TOOL,
-                                    content=tool_result.content,
-                                    tool_call_id=tc.id,
-                                    name=tc.name,
-                                )
-                            )
-                            continue
-
-                    tool_result = self._executor.execute(tc)
+                tool_result = self._executor.execute(tc)
+                if tool_result.metadata.get("timeout"):
                     all_tool_results.append(tool_result)
-
-                    # Append tool response message
-                    messages.append(
-                        Message(
-                            role=Role.TOOL,
-                            content=tool_result.content,
-                            tool_call_id=tc.id,
-                            name=tc.name,
-                        )
+                    return AgentResult(
+                        content="Tool in timeout; esito incerto. Verifica prima di ripetere l'azione.",
+                        tool_results=all_tool_results,
+                        turns=turns,
+                        metadata={"tool_timeout": True},
                     )
+                if tool_result.success and tc.name == "memory_store":
+                    stored_notes.add(note_key)
+                if len(tool_result.content) > self._max_tool_output_chars:
+                    tool_result.content = (
+                        tool_result.content[: self._max_tool_output_chars] + "\n[Troncato]"
+                    )
+                    tool_result.metadata["truncated"] = True
+                if not tool_result.success:
+                    tool_result.content = "Errore: " + tool_result.content
+                all_tool_results.append(tool_result)
+
+                # Append tool response message
+                messages.append(
+                    Message(
+                        role=Role.TOOL,
+                        content=tool_result.content,
+                        tool_call_id=tc.id,
+                        name=tc.name,
+                    )
+                )
 
         # Max turns exceeded
-        final_content = self._strip_think_tags(content) if content else ""
         self._emit_turn_end(turns=turns, max_turns_exceeded=True)
         return AgentResult(
-            content=final_content or "Maximum turns reached without a final answer.",
+            content="Maximum turns reached without a final answer. Richiesta incompleta.",
             tool_results=all_tool_results,
             turns=turns,
             metadata={

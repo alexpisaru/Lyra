@@ -1,0 +1,7 @@
+OpenJarvis Lite is a reduced derivative of OpenJarvis.
+Upstream: https://github.com/open-jarvis/OpenJarvis
+Base commit: 13eefab4a993809c1a28739eebc32a67500e393f
+Original license: Apache License 2.0 (see LICENSE).
+Modifications: local-only assembly, capability packs, bounded sequential agent
+loop, strict tool argument validation, Python SQLite storage, reduced packaging
+and CLI, browser session ownership and thread affinity. See docs/LITE_PLAN.md.

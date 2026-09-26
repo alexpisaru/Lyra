@@ -1,0 +1,160 @@
+{
+  "endpoint": "http://192.168.1.252:11434",
+  "ollama_version": {
+    "version": "0.34.4"
+  },
+  "model": "openbmb/minicpm5-2b:q8_0",
+  "cases": [
+    {
+      "case": "calculator",
+      "passed": true,
+      "elapsed_seconds": 23.56,
+      "content": "La risultato è 391.",
+      "turns": 2,
+      "metadata": {
+        "prompt_tokens": 784,
+        "completion_tokens": 27,
+        "truncated": false,
+        "total_tokens": 811,
+        "pack": "general",
+        "tools": [
+          "calculator"
+        ]
+      },
+      "tool_results": [
+        {
+          "tool_name": "calculator",
+          "content": "391.0",
+          "success": true,
+          "usage": {},
+          "cost_usd": 0.0,
+          "latency_seconds": 0.003000974655151367,
+          "metadata": {
+            "arguments": {
+              "expression": "17 * 23"
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "tool_names": [
+            "calculator"
+          ],
+          "message_count": 2
+        },
+        {
+          "tool_names": [
+            "calculator"
+          ],
+          "message_count": 4
+        }
+      ]
+    },
+    {
+      "case": "memory_store",
+      "passed": true,
+      "elapsed_seconds": 151.38,
+      "content": "Nota memorizzata: il colore di test di Jarvis Lite è verde smeraldo.",
+      "turns": 2,
+      "metadata": {
+        "prompt_tokens": 1044,
+        "completion_tokens": 48,
+        "truncated": false,
+        "total_tokens": 1092,
+        "pack": "memory",
+        "tools": [
+          "memory_store",
+          "memory_retrieve"
+        ]
+      },
+      "tool_results": [
+        {
+          "tool_name": "memory_store",
+          "content": "Stored as caf995131f714947ab2027da0eb7e8f4",
+          "success": true,
+          "usage": {},
+          "cost_usd": 0.0,
+          "latency_seconds": 0.002996683120727539,
+          "metadata": {
+            "arguments": {
+              "content": "Colore di test Jarvis Lite è verde smeraldo."
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "tool_names": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "message_count": 2
+        },
+        {
+          "tool_names": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "message_count": 4
+        }
+      ]
+    },
+    {
+      "case": "memory_retrieve",
+      "passed": false,
+      "elapsed_seconds": 45.95,
+      "content": "Non ho noti riguardanti il colore di test di Jarvis Lite.",
+      "turns": 1,
+      "metadata": {
+        "prompt_tokens": 491,
+        "completion_tokens": 17,
+        "truncated": false,
+        "total_tokens": 508,
+        "pack": "memory",
+        "tools": [
+          "memory_store",
+          "memory_retrieve"
+        ]
+      },
+      "tool_results": [],
+      "requests": [
+        {
+          "tool_names": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "message_count": 2
+        }
+      ]
+    },
+    {
+      "case": "file_read",
+      "passed": false,
+      "elapsed_seconds": 120.0,
+      "error": "Ollama not reachable at http://192.168.1.252:11434"
+    },
+    {
+      "case": "chat",
+      "passed": true,
+      "elapsed_seconds": 40.75,
+      "content": "Ciao! Come posso aiutarti oggi?",
+      "turns": 1,
+      "metadata": {
+        "prompt_tokens": 136,
+        "completion_tokens": 14,
+        "truncated": false,
+        "total_tokens": 150,
+        "pack": "chat",
+        "tools": []
+      },
+      "tool_results": [],
+      "requests": [
+        {
+          "tool_names": [],
+          "message_count": 2
+        }
+      ]
+    }
+  ]
+}

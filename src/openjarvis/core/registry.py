@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Generic, Tuple, Type, Typ
 if TYPE_CHECKING:
     from openjarvis.agents._stubs import BaseAgent
     from openjarvis.engine._stubs import InferenceEngine
-    from openjarvis.memory.store import FactStore
     from openjarvis.tools.storage._stubs import MemoryBackend
 
 T = TypeVar("T")
@@ -57,9 +56,7 @@ class RegistryBase(Generic[T]):
         try:
             return cls._entries()[key]
         except KeyError as exc:
-            raise KeyError(
-                f"{cls.__name__} does not have an entry for '{key}'"
-            ) from exc
+            raise KeyError(f"{cls.__name__} does not have an entry for '{key}'") from exc
 
     @classmethod
     def create(cls, key: str, *args: Any, **kwargs: Any) -> Any:
@@ -67,8 +64,7 @@ class RegistryBase(Generic[T]):
         entry = cls.get(key)
         if not callable(entry):
             raise TypeError(
-                f"{cls.__name__} entry '{key}' is not callable"
-                " and cannot be instantiated"
+                f"{cls.__name__} entry '{key}' is not callable and cannot be instantiated"
             )
         return entry(*args, **kwargs)
 
@@ -98,10 +94,6 @@ class RegistryBase(Generic[T]):
 # ---------------------------------------------------------------------------
 
 
-class ModelRegistry(RegistryBase[Any]):
-    """Registry for ``ModelSpec`` objects."""
-
-
 class EngineRegistry(RegistryBase[Type["InferenceEngine"]]):
     """Registry for inference engine backends."""
 
@@ -110,80 +102,9 @@ class MemoryRegistry(RegistryBase[Type["MemoryBackend"]]):
     """Registry for memory / retrieval backends."""
 
 
-class FactStoreRegistry(RegistryBase[Type["FactStore"]]):
-    """Registry for automatic-memory fact store backends."""
-
-
 class AgentRegistry(RegistryBase[Type["BaseAgent"]]):
     """Registry for agent implementations."""
 
 
 class ToolRegistry(RegistryBase[Any]):
     """Registry for tool specifications."""
-
-
-class RouterPolicyRegistry(RegistryBase[Any]):
-    """Registry for router policy implementations."""
-
-
-class BenchmarkRegistry(RegistryBase[Any]):
-    """Registry for benchmark implementations."""
-
-
-class ChannelRegistry(RegistryBase[Any]):
-    """Registry for channel implementations."""
-
-
-class LearningRegistry(RegistryBase[Any]):
-    """Registry for learning policies."""
-
-
-class SkillRegistry(RegistryBase[Any]):
-    """Registry for skill manifests."""
-
-
-class SpeechRegistry(RegistryBase[Any]):
-    """Registry for speech backend implementations."""
-
-
-class CompressionRegistry(RegistryBase[Any]):
-    """Registry for context compression strategies."""
-
-
-class TTSRegistry(RegistryBase[Any]):
-    """Registry for text-to-speech backend implementations."""
-
-
-class ConnectorRegistry(RegistryBase[Any]):
-    """Registry for data source connectors (Gmail, Slack, etc.)."""
-
-
-class MinerRegistry(RegistryBase[Any]):
-    """Registry for Pearl mining provider implementations.
-
-    Each provider implements the ``MiningProvider`` ABC defined in
-    ``openjarvis.mining._stubs``. Registry keys are short lowercase strings
-    such as ``"vllm-pearl"`` (CUDA + Hopper) and (future) ``"mlx-pearl"``,
-    ``"llamacpp-pearl-metal"``, ``"ollama-pearl"``.
-    """
-
-
-__all__ = [
-    "AgentRegistry",
-    "BenchmarkRegistry",
-    "ChannelRegistry",
-    "CompressionRegistry",
-    "ConnectorRegistry",
-    "EngineRegistry",
-    "FactStoreRegistry",
-    "LearningRegistry",
-    "MemoryRegistry",
-    "MinerRegistry",
-    "ModelRegistry",
-    "RegistryBase",
-    "RouterPolicyRegistry",
-    "SkillRegistry",
-    "SpeechRegistry",
-    "TTSRegistry",
-    "ToolRegistry",
-]

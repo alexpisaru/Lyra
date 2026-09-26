@@ -60,9 +60,7 @@ class LoopGuard:
             _rust = get_rust_module()
             self._rust_impl = _rust.LoopGuard(
                 max_identical=config.max_identical_calls,
-                max_ping_pong=(
-                    config.ping_pong_window // 2 if config.ping_pong_window > 1 else 2
-                ),
+                max_ping_pong=(config.ping_pong_window // 2 if config.ping_pong_window > 1 else 2),
                 poll_budget=config.poll_tool_budget,
             )
         except Exception:
@@ -114,8 +112,7 @@ class LoopGuard:
             return LoopVerdict(
                 blocked=True,
                 reason=(
-                    f"Tool '{tool_name}' exceeded poll budget "
-                    f"({self._config.poll_tool_budget})."
+                    f"Tool '{tool_name}' exceeded poll budget ({self._config.poll_tool_budget})."
                 ),
             )
 

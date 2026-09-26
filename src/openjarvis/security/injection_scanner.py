@@ -128,8 +128,7 @@ class InjectionScanner:
 
     def __init__(self) -> None:
         self._patterns = [
-            (re.compile(pat), name, level, desc)
-            for pat, name, level, desc in _INJECTION_PATTERNS
+            (re.compile(pat), name, level, desc) for pat, name, level, desc in _INJECTION_PATTERNS
         ]
         # Prefer the Rust backend, but fall back to the pure-Python patterns
         # above when the compiled extension was not built (mirrors the
@@ -188,9 +187,7 @@ class InjectionScanner:
                 )
                 highest = max(highest, _THREAT_ORDER.index(level))
         threat = _THREAT_ORDER[highest] if highest >= 0 else ThreatLevel.LOW
-        return InjectionScanResult(
-            is_clean=not findings, findings=findings, threat_level=threat
-        )
+        return InjectionScanResult(is_clean=not findings, findings=findings, threat_level=threat)
 
 
 __all__ = ["InjectionScanner", "InjectionScanResult"]

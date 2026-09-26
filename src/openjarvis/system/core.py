@@ -1,335 +1,113 @@
-"""JarvisSystem — the fully wired system dataclass."""
+"""Reduced JarvisSystem: same agent and executor, one pack per user turn."""
 
 from __future__ import annotations
-
-import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-from openjarvis.core.config import JarvisConfig
-from openjarvis.core.events import EventBus
-from openjarvis.core.types import Message, Role
-from openjarvis.engine._stubs import InferenceEngine
-from openjarvis.system.bundles import (
-    AgentRuntime,
-    Observability,
-    Scheduling,
-    SecurityContext,
-)
-from openjarvis.tools._stubs import BaseTool, ToolExecutor
-
-if TYPE_CHECKING:
-    from openjarvis.agents._stubs import BaseAgent
-    from openjarvis.agents.executor import AgentExecutor
-    from openjarvis.agents.manager import AgentManager
-    from openjarvis.agents.scheduler import AgentScheduler
-    from openjarvis.channels._stubs import BaseChannel
-    from openjarvis.learning._stubs import RouterPolicy
-    from openjarvis.learning.learning_orchestrator import LearningOrchestrator
-    from openjarvis.mcp.client import MCPClient
-    from openjarvis.mcp.server import MCPServer
-    from openjarvis.operators.manager import OperatorManager
-    from openjarvis.sandbox.runner import ContainerRunner
-    from openjarvis.scheduler.scheduler import TaskScheduler
-    from openjarvis.scheduler.store import SchedulerStore
-    from openjarvis.security.audit import AuditLogger
-    from openjarvis.security.boundary import BoundaryGuard
-    from openjarvis.security.capabilities import CapabilityPolicy
-    from openjarvis.sessions.session import SessionStore
-    from openjarvis.skills.manager import SkillManager
-    from openjarvis.speech._stubs import SpeechBackend
-    from openjarvis.system.orchestrator import QueryOrchestrator
-    from openjarvis.telemetry.gpu_monitor import GpuMonitor
-    from openjarvis.telemetry.store import TelemetryStore
-    from openjarvis.tools.storage._stubs import MemoryBackend
-    from openjarvis.traces.collector import TraceCollector
-    from openjarvis.traces.store import TraceStore
-    from openjarvis.workflow.engine import WorkflowEngine
-
-logger = logging.getLogger(__name__)
+from threading import Lock
+from typing import Any
+from openjarvis.agents._stubs import AgentContext
+from openjarvis.agents.orchestrator import OrchestratorAgent
+from openjarvis.core.types import Conversation, Message, Role
+from openjarvis.tools.packs import PACK_HINTS, select_tools
 
 
 @dataclass
 class JarvisSystem:
-    """Fully wired system -- the single source of truth for primitive composition."""
+    config: Any
+    bus: Any
+    engine: Any
+    tools: dict = field(default_factory=dict)
+    memory_backend: Any = None
+    browser_session: Any = None
+    knowledge_vault: Any = None
+    _lock: Any = field(default_factory=Lock, repr=False)
+    _closed: bool = False
 
-    config: JarvisConfig
-    bus: EventBus
-    engine: InferenceEngine
-    engine_key: str
-    model: str
-    agent: Optional[BaseAgent] = None
-    agent_name: str = ""
-    tools: List[BaseTool] = field(default_factory=list)
-    tool_executor: Optional[ToolExecutor] = None
-    memory_backend: Optional[MemoryBackend] = None
-    channel_backend: Optional[BaseChannel] = None
-    router: Optional[RouterPolicy] = None
-    mcp_server: Optional[MCPServer] = None
-    telemetry_store: Optional[TelemetryStore] = None
-    trace_store: Optional[TraceStore] = None
-    trace_collector: Optional[TraceCollector] = None
-    gpu_monitor: Optional[GpuMonitor] = None
-    scheduler_store: Optional[SchedulerStore] = None
-    scheduler: Optional[TaskScheduler] = None
-    container_runner: Optional[ContainerRunner] = None
-    workflow_engine: Optional[WorkflowEngine] = None
-    session_store: Optional[SessionStore] = None
-    capability_policy: Optional[CapabilityPolicy] = None
-    audit_logger: Optional[AuditLogger] = None
-    boundary_guard: Optional[BoundaryGuard] = None
-    operator_manager: Optional[OperatorManager] = None
-    agent_manager: Optional[AgentManager] = None
-    agent_scheduler: Optional[AgentScheduler] = None
-    agent_executor: Optional[AgentExecutor] = None
-    speech_backend: Optional[SpeechBackend] = None
-    skill_manager: Optional[SkillManager] = None
-    _learning_orchestrator: Optional[LearningOrchestrator] = None
-    _mcp_clients: List[MCPClient] = field(default_factory=list)
-    # Keep newly added fields after every pre-existing positional field so
-    # older positional JarvisSystem(...) calls retain their original meaning.
-    mcp_tools: List[BaseTool] = field(default_factory=list)
-    rate_limiter: Optional[Any] = None
-
-    @property
-    def security(self) -> SecurityContext:
-        return SecurityContext(
-            capability_policy=self.capability_policy,
-            audit_logger=self.audit_logger,
-            boundary_guard=self.boundary_guard,
-            rate_limiter=self.rate_limiter,
-        )
-
-    @property
-    def observability(self) -> Observability:
-        return Observability(
-            telemetry_store=self.telemetry_store,
-            trace_store=self.trace_store,
-            trace_collector=self.trace_collector,
-            gpu_monitor=self.gpu_monitor,
-        )
-
-    @property
-    def agents(self) -> AgentRuntime:
-        return AgentRuntime(
-            agent=self.agent,
-            agent_name=self.agent_name,
-            manager=self.agent_manager,
-            scheduler=self.agent_scheduler,
-            executor=self.agent_executor,
-        )
-
-    @property
-    def scheduling(self) -> Scheduling:
-        return Scheduling(
-            store=self.scheduler_store,
-            runner=self.scheduler,
-        )
-
-    def _get_orchestrator(self) -> QueryOrchestrator:
-        orch = self.__dict__.get("_orchestrator")
-        if orch is None:
-            from openjarvis.system.orchestrator import QueryOrchestrator
-
-            orch = QueryOrchestrator(self)
-            self.__dict__["_orchestrator"] = orch
-        return orch
-
-    def ask(
-        self,
-        query: str,
-        *,
-        context: bool = True,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        agent: Optional[str] = None,
-        tools: Optional[List[str]] = None,
-        system_prompt: Optional[str] = None,
-        operator_id: Optional[str] = None,
-        prior_messages: Optional[List[Message]] = None,
-    ) -> Dict[str, Any]:
-        return self._get_orchestrator().ask(
-            query,
-            context=context,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            agent=agent,
-            tools=tools,
-            system_prompt=system_prompt,
-            operator_id=operator_id,
-            prior_messages=prior_messages,
-        )
-
-    def _detect_agent_intent(self, query: str) -> Optional[str]:
-        return self._get_orchestrator()._detect_agent_intent(query)
-
-    def _build_tools(self, tool_names: List[str]) -> List[BaseTool]:
-        return self._get_orchestrator()._build_tools(tool_names)
-
-    def _run_agent(
-        self,
-        query,
-        messages,
-        agent_name,
-        tool_names,
-        temperature,
-        max_tokens,
-        *,
-        system_prompt=None,
-        operator_id=None,
-        prior_messages=None,
-    ) -> Dict[str, Any]:
-        return self._get_orchestrator()._run_agent(
-            query,
-            messages,
-            agent_name,
-            tool_names,
-            temperature,
-            max_tokens,
-            system_prompt=system_prompt,
-            operator_id=operator_id,
-            prior_messages=prior_messages,
-        )
-
-    def wire_channel(self, channel_bridge: Any) -> None:
-        """Register a message handler on *channel_bridge* that routes every
-        incoming message through this system (agent or engine) and replies.
-
-        Sessions are isolated per ``"<channel>:<conversation_id>"`` key so
-        each chat retains its own history.
-
-        Parameters
-        ----------
-        channel_bridge:
-            A connected :class:`~openjarvis.channels._stubs.BaseChannel`
-            instance whose ``on_message`` method accepts a callable.
-        """
-        from openjarvis.core.types import Message
-        from openjarvis.sessions.session import SessionStore
-
-        if self.session_store is None:
-            from pathlib import Path
-
-            self.session_store = SessionStore(
-                db_path=Path(self.config.sessions.db_path).expanduser(),
-                max_age_hours=self.config.sessions.max_age_hours,
-                consolidation_threshold=self.config.sessions.consolidation_threshold,
+    def ask(self, query, *, pack=None, prior_messages=None, confirm_callback=None):
+        # One local user/session per system; browser state and SQLite are shared.
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("JarvisSystem is closed")
+            selected, tools = select_tools(query, pack, self.tools)
+            cfg = self.config
+            agent = OrchestratorAgent(
+                self.engine,
+                cfg.intelligence.model,
+                tools=tools,
+                bus=self.bus,
+                max_turns=cfg.agent.max_turns,
+                temperature=cfg.intelligence.temperature,
+                max_tokens=cfg.intelligence.max_tokens,
+                system_prompt=cfg.agent.default_system_prompt + "\n" + PACK_HINTS[selected],
+                interactive=confirm_callback is not None,
+                confirm_callback=confirm_callback,
+                max_tool_calls=cfg.agent.max_tool_calls,
+                max_tool_output_chars=cfg.agent.max_tool_output_chars,
+                max_prompt_bytes=cfg.agent.max_prompt_bytes,
+                require_tool_use=selected in ("memory", "knowledge", "files", "browser"),
+                engine_options={"num_ctx": cfg.intelligence.num_ctx},
             )
+            history = self._history(prior_messages or [], cfg.agent.history_chars)
+            result = agent.run(query, AgentContext(conversation=Conversation(messages=history)))
+            return {
+                "content": result.content,
+                "tool_results": result.tool_results,
+                "turns": result.turns,
+                "metadata": {
+                    **result.metadata,
+                    "pack": selected,
+                    "browser_backend": (
+                        self.browser_session.active_backend if self.browser_session else None
+                    ),
+                    "tools": [t.spec.name for t in tools],
+                },
+            }
 
-        _system = self  # capture for closure
-
-        def _on_channel_message(cm) -> None:
-            session_key = f"{cm.channel}:{cm.conversation_id}"
-            session = _system.session_store.get_or_create(
-                session_key,
-                channel=cm.channel,
-                channel_user_id=cm.sender,
-            )
-
-            prior_msgs: List[Message] = []
-            for sm in session.messages:
-                try:
-                    role = Role(sm.role)
-                except ValueError:
-                    role = Role.USER
-                prior_msgs.append(Message(role=role, content=sm.content))
-
-            reply = ""
-            try:
-                if _system.agent_name and _system.agent_name != "none":
-                    result = _system.ask(
-                        cm.content,
-                        context=False,
-                        agent=_system.agent_name,
-                        prior_messages=prior_msgs,
-                    )
-                    reply = result.get("content", "")
-                else:
-                    result = _system.ask(
-                        cm.content,
-                        context=False,
-                        prior_messages=prior_msgs,
-                    )
-                    reply = result.get("content", "")
-            except Exception:
-                logger.exception("Channel message handler error")
-                reply = "Sorry, I encountered an error processing your message."
-
-            try:
-                _system.session_store.save_message(
-                    session.session_id,
-                    "user",
-                    cm.content,
-                    channel=cm.channel,
+    @staticmethod
+    def _history(messages, limit):
+        # Complete user/assistant pairs only; no orphan tool calls or old systems.
+        pairs = []
+        pending = None
+        for message in messages:
+            if message.role == Role.USER:
+                pending = message
+            elif message.role == Role.ASSISTANT and pending is not None and not message.tool_calls:
+                pairs.append(
+                    [
+                        Message(role=Role.USER, content=pending.text),
+                        Message(role=Role.ASSISTANT, content=message.text),
+                    ]
                 )
-                _system.session_store.save_message(
-                    session.session_id,
-                    "assistant",
-                    reply,
-                    channel=cm.channel,
-                )
-            except Exception:
-                logger.debug("Session save error", exc_info=True)
+                pending = None
+        result = []
+        for pair in reversed(pairs):
+            size = sum(len(m.text) for m in pair)
+            if size > limit:
+                break
+            limit -= size
+            result[0:0] = pair
+        return result
 
-            if reply:
-                try:
-                    # Canonical channel send contract (see BaseChannel.send):
-                    # the first positional arg is the DESTINATION id, and the
-                    # `conversation_id=` kwarg is the inbound message id used as
-                    # a reply/thread reference.  ``cm.conversation_id`` holds the
-                    # real per-adapter destination (Discord/Slack channel id,
-                    # Telegram chat id, ...) while ``cm.channel`` is only the
-                    # channel TYPE label ("discord", "telegram", ...).  Passing
-                    # the type label as the destination produced HTTP 400s
-                    # (#515) and using the channel id as a reply reference
-                    # produced MESSAGE_REFERENCE_UNKNOWN_MESSAGE (#516).
-                    channel_bridge.send(
-                        cm.conversation_id,
-                        reply,
-                        conversation_id=getattr(cm, "message_id", ""),
-                    )
-                except Exception:
-                    logger.exception("Channel send error")
-
-        channel_bridge.on_message(_on_channel_message)
-
-    def _close_mcp_clients(self) -> None:
-        """Close all persistent MCP client connections."""
-        for client in self._mcp_clients:
+    def close(self):
+        with self._lock:
+            if self._closed:
+                return
             try:
-                client.close()
-            except Exception:
-                logger.debug("Error closing MCP client", exc_info=True)
+                if self.browser_session is not None:
+                    self.browser_session.close()
+            finally:
+                try:
+                    if self.memory_backend is not None:
+                        self.memory_backend.close()
+                finally:
+                    try:
+                        if self.knowledge_vault is not None:
+                            self.knowledge_vault.close()
+                    finally:
+                        self.engine.close()
+                        self._closed = True
 
-    def close(self) -> None:
-        """Release resources."""
-        if self.scheduler and hasattr(self.scheduler, "stop"):
-            self.scheduler.stop()
-        for resource in (
-            self.scheduler_store,
-            self.engine,
-            self.gpu_monitor,
-            self.telemetry_store,
-            self.trace_store,
-            self.memory_backend,
-            self.session_store,
-            self.channel_backend,
-            self.workflow_engine,
-            self.container_runner,
-        ):
-            if resource and hasattr(resource, "close"):
-                resource.close()
-        if self.agent_manager is not None:
-            self.agent_manager.close()
-        if self.agent_scheduler is not None:
-            self.agent_scheduler.stop()
-        self._close_mcp_clients()
-
-    def __enter__(self) -> JarvisSystem:
+    def __enter__(self):
         return self
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *_):
         self.close()
-
-
-__all__ = ["JarvisSystem"]

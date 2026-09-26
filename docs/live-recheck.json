@@ -1,0 +1,227 @@
+{
+  "description": "Recheck after adding concise capability-specific prompt hints; existing persisted DB, fresh system",
+  "cases": [
+    {
+      "query": "Cerca nelle note salvate: colore di test Jarvis Lite. Qual è?",
+      "elapsed_seconds": 26.86,
+      "content": "Il colore di test per Jarvis Lite è **verde smeraldo**.",
+      "turns": 2,
+      "metadata": {
+        "prompt_tokens": 1153,
+        "completion_tokens": 39,
+        "truncated": false,
+        "total_tokens": 1192,
+        "pack": "memory",
+        "tools": [
+          "memory_store",
+          "memory_retrieve"
+        ]
+      },
+      "tool_results": [
+        {
+          "tool_name": "memory_retrieve",
+          "content": "[0.00] Colore di test Jarvis Lite è verde smeraldo.",
+          "success": true,
+          "usage": {},
+          "cost_usd": 0.0,
+          "latency_seconds": 0.00531315803527832,
+          "metadata": {
+            "arguments": {
+              "query": "colore di test Jarvis Lite"
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "engine_timing": {
+            "total_duration": 21438244997,
+            "load_duration": 2761614,
+            "prompt_eval_duration": 18388446000,
+            "eval_duration": 3010447000
+          },
+          "usage": {
+            "prompt_tokens": 551,
+            "prompt_tokens_evaluated": 551,
+            "completion_tokens": 22,
+            "total_tokens": 573
+          },
+          "tool_names": [
+            "memory_store",
+            "memory_retrieve"
+          ]
+        },
+        {
+          "engine_timing": {
+            "total_duration": 5362456666,
+            "load_duration": 2047563,
+            "prompt_eval_duration": 2935309000,
+            "eval_duration": 2378905000
+          },
+          "usage": {
+            "prompt_tokens": 602,
+            "prompt_tokens_evaluated": 602,
+            "completion_tokens": 17,
+            "total_tokens": 619
+          },
+          "tool_names": [
+            "memory_store",
+            "memory_retrieve"
+          ]
+        }
+      ],
+      "passed": true
+    },
+    {
+      "query": "Ti ricordi qual è il colore di test Jarvis Lite?",
+      "elapsed_seconds": 9.41,
+      "content": "Non ho registrato informazioni su Jarvis Lite o sul suo design. Potrei cercare nella memoria, ma non sembra esserci nulla stored su questo argomento. Se vuoi, posso aiutarti a memorizzarlo ora.",
+      "turns": 1,
+      "metadata": {
+        "prompt_tokens": 547,
+        "completion_tokens": 57,
+        "truncated": false,
+        "total_tokens": 604,
+        "pack": "memory",
+        "tools": [
+          "memory_store",
+          "memory_retrieve"
+        ]
+      },
+      "tool_results": [],
+      "requests": [
+        {
+          "engine_timing": {
+            "total_duration": 9415129769,
+            "load_duration": 2723642,
+            "prompt_eval_duration": 1265094000,
+            "eval_duration": 8109812000
+          },
+          "usage": {
+            "prompt_tokens": 547,
+            "prompt_tokens_evaluated": 547,
+            "completion_tokens": 57,
+            "total_tokens": 604
+          },
+          "tool_names": [
+            "memory_store",
+            "memory_retrieve"
+          ]
+        }
+      ],
+      "passed": false
+    },
+    {
+      "query": "Leggi prova.txt e riportami il codice di verifica.",
+      "elapsed_seconds": 19.05,
+      "content": "Il codice di verifica Jarvis Lite è **ORCHIDEA-742**.",
+      "turns": 2,
+      "metadata": {
+        "prompt_tokens": 840,
+        "completion_tokens": 35,
+        "truncated": false,
+        "total_tokens": 875,
+        "pack": "files",
+        "tools": [
+          "file_read"
+        ]
+      },
+      "tool_results": [
+        {
+          "tool_name": "file_read",
+          "content": "Il codice di verifica Jarvis Lite è ORCHIDEA-742.\n",
+          "success": true,
+          "usage": {},
+          "cost_usd": 0.0,
+          "latency_seconds": 0.006812572479248047,
+          "metadata": {
+            "path": "C:\\Users\\alexp\\Documents\\Codex\\2026-09-26\\referenced-chatgpt-conversation-this-is-an-2\\work\\live-smoke-1790444612\\prova.txt",
+            "size_bytes": 52,
+            "arguments": {
+              "path": "prova.txt"
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "engine_timing": {
+            "total_duration": 14155619443,
+            "load_duration": 2516841,
+            "prompt_eval_duration": 11884706000,
+            "eval_duration": 2212753000
+          },
+          "usage": {
+            "prompt_tokens": 397,
+            "prompt_tokens_evaluated": 397,
+            "completion_tokens": 17,
+            "total_tokens": 414
+          },
+          "tool_names": [
+            "file_read"
+          ]
+        },
+        {
+          "engine_timing": {
+            "total_duration": 4884564511,
+            "load_duration": 1612830,
+            "prompt_eval_duration": 2427633000,
+            "eval_duration": 2409347000
+          },
+          "usage": {
+            "prompt_tokens": 443,
+            "prompt_tokens_evaluated": 443,
+            "completion_tokens": 18,
+            "total_tokens": 461
+          },
+          "tool_names": [
+            "file_read"
+          ]
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "ollama_ps_before": {
+    "models": [
+      {
+        "name": "hf.co/GnLOLot/MiniCPM5-1B-Claude-Opus-Fable5-V2-Thinking-GGUF:Q8_0",
+        "model": "hf.co/GnLOLot/MiniCPM5-1B-Claude-Opus-Fable5-V2-Thinking-GGUF:Q8_0",
+        "size": 1295725362,
+        "digest": "88510e96a8a7fc46e3860d24f419ffa23813fba4d78fed25ef84f5e45af24f39",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "llama",
+          "families": [
+            "llama"
+          ],
+          "parameter_size": "1.08B",
+          "quantization_level": "unknown"
+        },
+        "expires_at": "2026-09-26T17:55:26.620520528Z",
+        "size_vram": 0,
+        "context_length": 4096
+      },
+      {
+        "name": "openbmb/minicpm5-2b:q8_0",
+        "model": "openbmb/minicpm5-2b:q8_0",
+        "size": 3153256775,
+        "digest": "5d5aafb9f22cc67d4d2b359dde9aa3659410be7eab884b28ab45d31a8e2f9567",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "llama",
+          "families": [
+            "llama"
+          ],
+          "parameter_size": "2.5B",
+          "quantization_level": "Q8_0"
+        },
+        "expires_at": "2026-09-26T17:54:38.347554218Z",
+        "size_vram": 0,
+        "context_length": 8192
+      }
+    ]
+  }
+}

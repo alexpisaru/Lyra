@@ -2,46 +2,156 @@
 
 from __future__ import annotations
 
-import base64
 from typing import Any
 
 from openjarvis.core.registry import ToolRegistry
 from openjarvis.core.types import ToolResult
-from openjarvis.tools._stubs import BaseTool, ToolSpec
+from openjarvis.tools._stubs import BaseTool, ToolSpec, _BoundedToolRunner
 
 
 class _BrowserSession:
-    """Manages a shared Playwright browser session (lazy init)."""
+    """One lazy, isolated context; all Playwright calls use the same worker."""
 
-    def __init__(self) -> None:
-        self._playwright = None
-        self._browser = None
-        self._page = None
+    def __init__(self, config=None) -> None:
+        from openjarvis.core.config import BrowserConfig
+
+        self.config = config or BrowserConfig()
+        self.config.validate()
+        self.runner = _BoundedToolRunner(1, 8)
+        self._playwright = self._browser = self._context = self._page = None
+        self.active_backend = None
+        self.fallback_reason = None
+        self._failed = False
+        self._blocked = None
+        self._probing = False
+        self._probe_seen = False
 
     def _ensure_browser(self) -> None:
         if self._page is not None:
             return
+        if self._failed:
+            raise RuntimeError("Browser initialization failed; close and rebuild the system")
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            raise ImportError(
-                "playwright not installed. Install with: uv sync --extra browser"
-            )
+            raise ImportError("Install the optional browser extra: pip install '.[browser]'")
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(headless=True)
-        self._page = self._browser.new_page()
+        try:
+            try:
+                self._connect(self.config.backend)
+            except Exception as exc:
+                self._dispose_browser()
+                if self.config.backend != "obscura" or self.config.fallback != "chromium":
+                    raise
+                import warnings
+
+                self.fallback_reason = str(exc)
+                warnings.warn(
+                    "Obscura unavailable; using explicitly configured Chromium fallback",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                self._connect("chromium")
+        except Exception:
+            self._failed = True
+            self._close()
+            raise
+
+    def _connect(self, backend):
+        if backend == "obscura":
+            self._browser = self._playwright.chromium.connect_over_cdp(
+                self.config.cdp_url, timeout=5000
+            )
+        else:
+            self._browser = self._playwright.chromium.launch(headless=True, timeout=10000)
+        # Never reuse the CDP server's default context or any personal profile.
+        self._context = self._browser.new_context(service_workers="block", accept_downloads=False)
+        self._context.set_default_timeout(10000)
+        self._context.set_default_navigation_timeout(15000)
+        self._context.route("**/*", self._guard)
+        self._context.route_web_socket("**/*", lambda ws: ws.close())
+        self._page = self._context.new_page()
+        self._context.on("page", lambda page: page.close() if page != self._page else None)
+        # Prove Fetch interception is implemented, not merely accepted as a CDP no-op.
+        self._probing = True
+        self._probe_seen = False
+        try:
+            self._page.goto("https://jarvis-interception.invalid/", timeout=5000)
+            if not self._probe_seen or self._page.inner_text("body") != "jarvis-route-ok":
+                raise RuntimeError("Browser does not implement required request interception")
+        finally:
+            self._probing = False
+        self._page.goto("about:blank")
+        self.active_backend = backend
+
+    def _guard(self, route):
+        from urllib.parse import urlsplit
+        from openjarvis.security.ssrf import check_ssrf
+
+        url = route.request.url
+        if self._probing and url == "https://jarvis-interception.invalid/":
+            self._probe_seen = True
+            route.fulfill(status=200, content_type="text/html", body="jarvis-route-ok")
+            return
+        response = None
+        try:
+            if urlsplit(url).scheme not in ("http", "https"):
+                raise ValueError("Only public HTTP(S) requests are allowed")
+            error = check_ssrf(url)
+            if error:
+                raise ValueError(error)
+            # Playwright route handlers only see the first URL of an HTTP redirect.
+            # Fetch without following redirects and fail closed on any Location.
+            # This intentionally denies public redirects too; no unguarded follow-up.
+            response = route.fetch(max_redirects=0, timeout=10000)
+            if 300 <= response.status < 400 and "location" in response.headers:
+                raise ValueError("HTTP redirect blocked; navigate directly to its public final URL")
+            route.fulfill(response=response)
+        except Exception as exc:
+            self._blocked = str(exc)
+            route.abort()
+        finally:
+            if response is not None:
+                response.dispose()
 
     @property
     def page(self):
         self._ensure_browser()
+        self._blocked = None
         return self._page
 
+    def check_requests(self):
+        if self._blocked:
+            raise RuntimeError(f"Browser request blocked: {self._blocked}")
+
     def close(self) -> None:
-        if self._browser:
-            self._browser.close()
-        if self._playwright:
-            self._playwright.stop()
-        self._playwright = self._browser = self._page = None
+        try:
+            future = self.runner.submit(self._close)
+            if future is not None:
+                future.result(timeout=35)
+        finally:
+            self.runner.shutdown()
+
+    def _dispose_browser(self):
+        try:
+            if self._context is not None:
+                self._context.close()
+        finally:
+            self._context = self._page = None
+            try:
+                if self._browser is not None:
+                    self._browser.close()
+            finally:
+                self._browser = None
+                self.active_backend = None
+
+    def _close(self) -> None:
+        try:
+            self._dispose_browser()
+        finally:
+            if self._playwright is not None:
+                self._playwright.stop()
+            self._playwright = None
 
 
 _session = _BrowserSession()
@@ -59,23 +169,28 @@ class BrowserNavigateTool(BaseTool):
     tool_id = "browser_navigate"
     is_local = False
 
+    def __init__(self, session=None):
+        self._session = session if session is not None else _session
+        self.execution_runner = self._session.runner
+
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="browser_navigate",
             description=(
-                "Navigate to a URL in the browser."
-                " Returns the page title and text content."
+                "Navigate to a URL in the browser. Returns the page title and text content."
             ),
             parameters={
                 "type": "object",
                 "properties": {
                     "url": {
                         "type": "string",
-                        "description": "URL to navigate to.",
+                        "pattern": "^https?://",
+                        "description": "Complete public HTTP(S) URL to open.",
                     },
                     "wait_for": {
                         "type": "string",
+                        "enum": ["load", "domcontentloaded", "networkidle"],
                         "description": (
                             "Wait condition: 'load', 'domcontentloaded',"
                             " or 'networkidle'. Default: 'load'."
@@ -106,7 +221,16 @@ class BrowserNavigateTool(BaseTool):
         # uncompiled extension must not silently disable SSRF protection.
         from openjarvis.security.ssrf import check_ssrf
 
-        ssrf_error = check_ssrf(url)
+        from urllib.parse import urlsplit
+
+        try:
+            ssrf_error = (
+                check_ssrf(url)
+                if urlsplit(url).scheme in ("http", "https")
+                else "Only public HTTP(S) URLs are allowed"
+            )
+        except ValueError as exc:
+            ssrf_error = str(exc)
         if ssrf_error:
             return ToolResult(
                 tool_name="browser_navigate",
@@ -115,8 +239,9 @@ class BrowserNavigateTool(BaseTool):
             )
 
         try:
-            page = _session.page
+            page = self._session.page
             response = page.goto(url, wait_until=wait_for)
+            self._session.check_requests()
             title = page.title()
             text_content = page.inner_text("body")
             if len(text_content) > 5000:
@@ -127,20 +252,26 @@ class BrowserNavigateTool(BaseTool):
                 tool_name="browser_navigate",
                 content=f"Title: {title}\n\n{text_content}",
                 success=True,
-                metadata={"url": url, "title": title, "status": status},
+                metadata={
+                    "url": page.url,
+                    "title": title,
+                    "status": status,
+                    "backend": self._session.active_backend,
+                    "fallback_reason": self._session.fallback_reason,
+                },
             )
         except ImportError:
             return ToolResult(
                 tool_name="browser_navigate",
                 content=(
-                    "playwright not installed. Install with: uv sync --extra browser"
+                    "Install the optional browser extra: pip install '.[browser]' (see docs/BROWSER.md)"
                 ),
                 success=False,
             )
         except Exception as exc:
             return ToolResult(
                 tool_name="browser_navigate",
-                content=f"Navigation error: {exc}",
+                content=f"Navigation error: {self._session._blocked or exc}",
                 success=False,
             )
 
@@ -156,6 +287,10 @@ class BrowserClickTool(BaseTool):
 
     tool_id = "browser_click"
     is_local = False
+
+    def __init__(self, session=None):
+        self._session = session if session is not None else _session
+        self.execution_runner = self._session.runner
 
     @property
     def spec(self) -> ToolSpec:
@@ -183,33 +318,10 @@ class BrowserClickTool(BaseTool):
                             " instead of CSS selector. Default: false."
                         ),
                     },
-                    "target": {
-                        "type": "string",
-                        "description": "Alias for selector.",
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "Alias for selector, for visible element text.",
-                    },
-                    "element": {
-                        "type": "string",
-                        "description": "Alias for selector.",
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": "Alias for selector.",
-                    },
                 },
-                # Require one accepted spelling without forcing callers to
-                # use ``selector`` when an advertised alias is supplied.
-                "anyOf": [
-                    {"required": ["selector"]},
-                    {"required": ["target"]},
-                    {"required": ["text"]},
-                    {"required": ["element"]},
-                    {"required": ["query"]},
-                ],
+                "required": ["selector"],
             },
+            requires_confirmation=True,
             category="browser",
         )
 
@@ -240,8 +352,7 @@ class BrowserClickTool(BaseTool):
             return ToolResult(
                 tool_name="browser_click",
                 content=(
-                    "No selector provided. Pass the visible text of the"
-                    " element or a CSS selector."
+                    "No selector provided. Pass the visible text of the element or a CSS selector."
                 ),
                 success=False,
             )
@@ -249,8 +360,9 @@ class BrowserClickTool(BaseTool):
         by_text = params.get("by_text", False)
 
         try:
-            page = _session.page
+            page = self._session.page
             strategy = self._resolve_and_click(page, selector, by_text)
+            self._session.check_requests()
             return ToolResult(
                 tool_name="browser_click",
                 content=f"Clicked element: {selector}",
@@ -265,7 +377,7 @@ class BrowserClickTool(BaseTool):
             return ToolResult(
                 tool_name="browser_click",
                 content=(
-                    "playwright not installed. Install with: uv sync --extra browser"
+                    "Install the optional browser extra: pip install '.[browser]' (see docs/BROWSER.md)"
                 ),
                 success=False,
             )
@@ -300,9 +412,7 @@ class BrowserClickTool(BaseTool):
             if not by_text:
                 cands.append(("css", frame.locator(selector)))
             cands.append(("text-exact", frame.get_by_text(selector, exact=True)))
-            cands.append(
-                ("text-fuzzy", frame.get_by_text(re.compile(re.escape(selector), re.I)))
-            )
+            cands.append(("text-fuzzy", frame.get_by_text(re.compile(re.escape(selector), re.I))))
             # YouTube search results: "first video result" must click a
             # video title, not the "Videos" filter chip — so this outranks
             # the generic role-based keyword match below.
@@ -394,6 +504,10 @@ class BrowserTypeTool(BaseTool):
     tool_id = "browser_type"
     is_local = False
 
+    def __init__(self, session=None):
+        self._session = session if session is not None else _session
+        self.execution_runner = self._session.runner
+
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -415,13 +529,12 @@ class BrowserTypeTool(BaseTool):
                     },
                     "clear": {
                         "type": "boolean",
-                        "description": (
-                            "If true, clear the field before typing. Default: true."
-                        ),
+                        "description": ("If true, clear the field before typing. Default: true."),
                     },
                 },
                 "required": ["selector", "text"],
             },
+            requires_confirmation=True,
             category="browser",
         )
 
@@ -445,11 +558,12 @@ class BrowserTypeTool(BaseTool):
         clear = params.get("clear", True)
 
         try:
-            page = _session.page
+            page = self._session.page
             if clear:
                 page.fill(selector, text)
             else:
                 page.type(selector, text)
+            self._session.check_requests()
 
             return ToolResult(
                 tool_name="browser_type",
@@ -461,7 +575,7 @@ class BrowserTypeTool(BaseTool):
             return ToolResult(
                 tool_name="browser_type",
                 content=(
-                    "playwright not installed. Install with: uv sync --extra browser"
+                    "Install the optional browser extra: pip install '.[browser]' (see docs/BROWSER.md)"
                 ),
                 success=False,
             )
@@ -474,87 +588,7 @@ class BrowserTypeTool(BaseTool):
 
 
 # ---------------------------------------------------------------------------
-# Tool 4: BrowserScreenshotTool
-# ---------------------------------------------------------------------------
-
-
-@ToolRegistry.register("browser_screenshot")
-class BrowserScreenshotTool(BaseTool):
-    """Take a screenshot of the current page."""
-
-    tool_id = "browser_screenshot"
-    is_local = False
-
-    @property
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="browser_screenshot",
-            description=(
-                "Take a screenshot of the current browser page."
-                " Returns the screenshot as base64-encoded data."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Optional file path to save the screenshot.",
-                    },
-                    "full_page": {
-                        "type": "boolean",
-                        "description": (
-                            "If true, capture the full scrollable page. Default: false."
-                        ),
-                    },
-                },
-            },
-            category="browser",
-        )
-
-    def execute(self, **params: Any) -> ToolResult:
-        path = params.get("path")
-        full_page = params.get("full_page", False)
-
-        try:
-            page = _session.page
-            screenshot_bytes = page.screenshot(full_page=full_page)
-
-            if path:
-                with open(path, "wb") as f:
-                    f.write(screenshot_bytes)
-
-            b64_data = base64.b64encode(screenshot_bytes).decode("utf-8")
-
-            description = "Screenshot taken"
-            if full_page:
-                description += " (full page)"
-            if path:
-                description += f", saved to {path}"
-
-            return ToolResult(
-                tool_name="browser_screenshot",
-                content=description,
-                success=True,
-                metadata={"screenshot_base64": b64_data},
-            )
-        except ImportError:
-            return ToolResult(
-                tool_name="browser_screenshot",
-                content=(
-                    "playwright not installed. Install with: uv sync --extra browser"
-                ),
-                success=False,
-            )
-        except Exception as exc:
-            return ToolResult(
-                tool_name="browser_screenshot",
-                content=f"Screenshot error: {exc}",
-                success=False,
-            )
-
-
-# ---------------------------------------------------------------------------
-# Tool 5: BrowserExtractTool
+# Tool 4: BrowserExtractTool
 # ---------------------------------------------------------------------------
 
 
@@ -564,6 +598,10 @@ class BrowserExtractTool(BaseTool):
 
     tool_id = "browser_extract"
     is_local = False
+
+    def __init__(self, session=None):
+        self._session = session if session is not None else _session
+        self.execution_runner = self._session.runner
 
     @property
     def spec(self) -> ToolSpec:
@@ -578,15 +616,13 @@ class BrowserExtractTool(BaseTool):
                 "properties": {
                     "selector": {
                         "type": "string",
-                        "description": (
-                            "CSS selector to extract from. Default: 'body'."
-                        ),
+                        "description": ("CSS selector to extract from. Default: 'body'."),
                     },
                     "extract_type": {
                         "type": "string",
+                        "enum": ["text", "links", "tables"],
                         "description": (
-                            "Type of extraction: 'text', 'links',"
-                            " or 'tables'. Default: 'text'."
+                            "Type of extraction: 'text', 'links', or 'tables'. Default: 'text'."
                         ),
                     },
                 },
@@ -602,14 +638,13 @@ class BrowserExtractTool(BaseTool):
             return ToolResult(
                 tool_name="browser_extract",
                 content=(
-                    f"Invalid extract_type: '{extract_type}'."
-                    " Must be 'text', 'links', or 'tables'."
+                    f"Invalid extract_type: '{extract_type}'. Must be 'text', 'links', or 'tables'."
                 ),
                 success=False,
             )
 
         try:
-            page = _session.page
+            page = self._session.page
 
             if extract_type == "text":
                 content = page.inner_text(selector)
@@ -675,7 +710,7 @@ class BrowserExtractTool(BaseTool):
             return ToolResult(
                 tool_name="browser_extract",
                 content=(
-                    "playwright not installed. Install with: uv sync --extra browser"
+                    "Install the optional browser extra: pip install '.[browser]' (see docs/BROWSER.md)"
                 ),
                 success=False,
             )
@@ -691,6 +726,5 @@ __all__ = [
     "BrowserNavigateTool",
     "BrowserClickTool",
     "BrowserTypeTool",
-    "BrowserScreenshotTool",
     "BrowserExtractTool",
 ]

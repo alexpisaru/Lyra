@@ -1,0 +1,25 @@
+[Unit]
+Description=Obscura CDP for OpenJarvis Lite (experimental)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jarvis
+Group=jarvis
+WorkingDirectory=/opt/obscura-0.2.3
+Environment=OBSCURA_ALLOW_PRIVATE_NETWORK=0
+Environment=OBSCURA_NAV_TIMEOUT_MS=15000
+Environment=OBSCURA_CDP_COMMAND_TIMEOUT_MS=20000
+Environment=OBSCURA_FETCH_TIMEOUT_MS=10000
+ExecStart=/opt/obscura-0.2.3/obscura serve --host 127.0.0.1 --port 9222
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

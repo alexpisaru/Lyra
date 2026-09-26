@@ -1,178 +1,179 @@
-<div align="center">
-  <img alt="OpenJarvis" src="assets/OpenJarvis_Horizontal_Logo.png" width="400">
+# OpenJarvis Lite 0.2
 
-  <p><i>Personal AI, On Personal Devices.</i></p>
+Fork ridotto di [OpenJarvis](https://github.com/open-jarvis/OpenJarvis), base
+`13eefab4a993809c1a28739eebc32a67500e393f`. Target invariato: Linux personale,
+Ollama e `openbmb/minicpm5-2b:q8_0`. Nessuna installazione sul CT è stata eseguita.
 
-  <p>
-    <a href="https://arxiv.org/abs/2605.17172"><img src="https://img.shields.io/badge/arXiv-2605.17172-b31b1b.svg" alt="arXiv"></a>
-    <a href="https://openjarvis.stanford.edu/"><img src="https://img.shields.io/badge/project-OpenJarvis-blue" alt="Project"></a>
-    <a href="https://open-jarvis.github.io/OpenJarvis/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Docs"></a>
-    <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License">
-    <a href="https://discord.gg/CMVBmDQ5Fj"><img src="https://img.shields.io/badge/discord-join-7289da?logo=discord&logoColor=white" alt="Discord"></a>
-    <a href="https://x.com/OpenJarvisAI"><img src="https://img.shields.io/badge/X-@OpenJarvisAI-black?logo=x&logoColor=white" alt="X / Twitter"></a>
-  </p>
-</div>
+Mantiene `OrchestratorAgent`, `ToolExecutor`, adapter Ollama e tipi upstream.
+Un loop sequenziale, un pack per richiesta, massimo 5 schema (i pack attuali
+ne usano 0–4). Nessun framework aggiuntivo, router LLM, cloud o MCP.
 
----
+Il vault è una directory di file Markdown UTF-8. Obsidian può aprirla, ma
+l'app non è una dipendenza. Obscura si collega attraverso Playwright/CDP
+usando gli stessi quattro tool browser. **Obscura 0.2.3 non ha superato lo
+smoke Windows sull'intercettazione richieste: resta sperimentale, non il
+backend predefinito.** Il collaudo Linux è separato e ancora da eseguire.
 
-<div align="center">
-  <img alt="OpenJarvis demo reel" src="assets/openjarvis_demo_reel.webp" width="75%">
-</div>
+## Installazione sul CT Jarvis — da eseguire in seguito
 
----
+Consigliato Debian 12/13 x86_64, Python 3.11–3.13, SQLite con FTS5.
+Caricare il pacchetto sorgente `openjarvis_lite-0.2.0.tar.gz` sul CT, per
+esempio in `/tmp`, poi come root:
 
-> **[Documentation](https://open-jarvis.github.io/OpenJarvis/)**
->
-> **[Project Site](https://openjarvis.stanford.edu/)**
->
-> **[Paper](https://arxiv.org/abs/2605.17172)**
->
-> **[Leaderboard](https://open-jarvis.github.io/OpenJarvis/leaderboard/)**
->
-> **[Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/)**
+```bash
+apt update
+apt install -y python3 python3-venv ca-certificates
+id jarvis >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/jarvis --shell /usr/sbin/nologin jarvis
+install -d -o jarvis -g jarvis /opt/jarvis-lite /srv/jarvis-workspace /srv/jarvis-vault /srv/jarvis-state
+tar -xzf /tmp/openjarvis_lite-0.2.0.tar.gz -C /opt/jarvis-lite --strip-components=1
+chown -R jarvis:jarvis /opt/jarvis-lite
+runuser -u jarvis -- python3 -m venv /opt/jarvis-lite/.venv
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install /opt/jarvis-lite
+```
 
-## Why OpenJarvis?
+Non usare l'installer full di OpenJarvis. Il pacchetto base installa soltanto
+`click`, `httpx`, `jsonschema` e relative dipendenze. Nessun browser viene
+scaricato se disabilitato. Non sono necessari Git, Rust, Node o Obsidian.
 
-Personal AI agents are exploding in popularity, but nearly all of them still route intelligence through cloud APIs. Your "personal" AI continues to depend on someone else's server. At the same time, our [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) research showed that local language models already handle 88.7% of single-turn chat and reasoning queries, with intelligence efficiency improving 5.3× from 2023 to 2025. The models and hardware are increasingly ready. What has been missing is the software stack to make local-first personal AI practical.
+`config/lite.toml` è già predisposto per:
 
-OpenJarvis is that stack. It is a framework for local-first personal AI, built around three core ideas: shared primitives for building on-device agents; evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy; and a learning loop that improves models using local trace data. The goal is simple: make it possible to build personal AI agents that run locally by default, calling the cloud only when truly necessary. OpenJarvis aims to be both a research platform and a production foundation for local AI, in the spirit of PyTorch.
+```toml
+[engine]
+host = "http://192.168.1.252:11434"
+timeout = 120.0
+[intelligence]
+model = "openbmb/minicpm5-2b:q8_0"
+[knowledge]
+vault_path = "/srv/jarvis-vault"
+[memory]
+enabled = true
+db_path = "/srv/jarvis-state/memory.db"
+```
 
-## Installation
+Questi sono estratti del file completo, non un secondo file da concatenare.
+Il modello deve essere già presente nel CT Ollama: `check` non lo scarica.
 
-Pick your platform and run one command. Each installer handles [uv](https://docs.astral.sh/uv/), the Python venv, Ollama, and a starter model — about 3 minutes on broadband.
+```bash
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml check
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml ask --pack general --json 'Calcola 17 * 23 usando calculator'
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml ask --pack knowledge --json 'Usa notes_write per creare test.md con il testo ORCHIDEA-742'
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml ask --pack knowledge --json 'Cerca ORCHIDEA nelle note usando notes_search'
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml chat
+```
 
-| Platform | One-liner |
+I risultati JSON devono contenere `tool_results` riusciti. Una risposta
+senza tool non certifica l'azione. La qualità del nuovo pack con MiniCPM va
+collaudata sul target; i precedenti test reali del modello riguardano la 0.1.
+
+## Pack e routing
+
+| Pack | Tool |
 |---|---|
-| **macOS · Linux · WSL2** | `curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh \| bash` |
-| **Native Windows** | `irm https://open-jarvis.github.io/OpenJarvis/install.ps1 \| iex` |
-| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/open-jarvis/OpenJarvis/releases) |
+| `chat` | Nessuno |
+| `general` | `calculator` |
+| `files` | `file_read` nel workspace |
+| `memory` | `memory_store`, `memory_retrieve` nel database personale |
+| `knowledge` | `notes_search`, `notes_read`, `notes_write`, `notes_append` nel vault |
+| `browser` | `browser_navigate`, `browser_click`, `browser_type`, `browser_extract` |
 
-Then `jarvis` to start. The Rust extension and larger models continue downloading in the background; `jarvis doctor` shows status.
+`tools.enabled` resta l'allowlist globale; al modello arrivano solo gli schema
+del pack scelto. `enabled=[]` lascia disponibile soltanto `chat`. Non sono
+ammessi tool esterni al pack e gli argomenti JSON sconosciuti sono rifiutati.
 
-Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://open-jarvis.github.io/OpenJarvis/getting-started/install/).
+Le regole italiano/inglese selezionano `knowledge` per note/appunti/vault/
+Obsidian/Markdown e nomi `.md`; `memory` per ricorda/memorizza/memoria senza
+riferimenti al vault. **Cambiamento dalla 0.1:** «Cerca nelle note» ora cerca
+i Markdown. Per dati già memorizzati in SQLite usare `--pack memory` oppure
+«Cerca nella memoria». Non viene eseguita una migrazione automatica.
+Richieste miste (es. sito → vault) richiedono passi separati e pack espliciti.
+`/pack knowledge`, `/pack browser`, `/auto`, `/exit` sono disponibili in chat.
 
-## Quick Start
+## Vault e memoria
 
-```bash
-jarvis                          # start chatting (default: chat-simple)
-jarvis init --preset <name> --force  # replace config with a starter preset
-```
+- `knowledge.vault_path`: percorso assoluto. Contiene soltanto i file dell'utente;
+  salvataggi atomici, directory create quando necessario, niente database sul disco.
+- I tool accettano path relativi con `/`, estensione `.md`. Vietati traversal,
+  path assoluti, drive/UNC, file nascosti, symlink, hard link e file speciali.
+  Linux usa descrittori di directory e `O_NOFOLLOW` anche contro scambi di symlink.
+- `notes_write` crea o **sostituisce tutto** il file; `notes_append` richiede un
+  file esistente e aggiunge esattamente il testo fornito, senza nuove righe implicite.
+- `notes_search` riusa `SQLiteMemory`/FTS5 in RAM. A ogni ricerca controlla i
+  contenuti e aggiorna solo quelli cambiati; rimozioni e rinomine vengono recepite.
+  La ricerca trova parole in testo e path, restituisce al massimo tre estratti.
+- Limiti: 20.000 caratteri per write/append, 256 KiB per nota, 5.000 voci e
+  16 MiB di testo per scansione. Il superamento della scansione è un errore,
+  mai un risultato completo fittizio. File non leggibili/non supportati sono
+  saltati con conteggio esplicito. Nessun embedding o indicizzatore in background.
+- `memory.db_path`: memoria personale persistente separata, da tenere fuori
+  dal vault; store/retrieve e limiti della 0.1 rimangono. La cronologia chat
+  rimane in RAM e si perde al riavvio.
 
-> Prefix `jarvis ...` with `uv run`, or `source .venv/bin/activate` first.
+Per Obsidian aprire una copia sincronizzata o un mount del vault come cartella.
+La sincronizzazione non è inclusa. Fare backup dei `.md` e, se usata, della
+memoria SQLite separata. Scritture Jarvis serializzate; modifiche simultanee
+da Obsidian e Jarvis possono sovrascriversi: non c'è un protocollo di merge.
 
-| Preset | What it does |
-|---|---|
-| `morning-digest-mac` / `morning-digest-linux` / `morning-digest-minimal` | Spoken daily briefing from email, calendar, health, news |
-| `deep-research` | Multi-hop research across indexed docs with citations |
-| `code-assistant` | Agent with code execution, file I/O, and shell access |
-| `scheduled-monitor` | Stateful agent on a schedule with memory |
-| `chat-simple` | Lightweight conversation, no tools |
+## Browser opzionale
 
-Example:
-
-```bash
-jarvis init --preset morning-digest-mac --force
-jarvis connect gdrive          # one OAuth covers Gmail / Calendar / Tasks
-jarvis digest --fresh          # generate and play your first briefing
-```
-
-Per-preset deep dives: [morning digest](https://open-jarvis.github.io/OpenJarvis/user-guide/morning-digest/) · [deep research](https://open-jarvis.github.io/OpenJarvis/user-guide/deep-research/) · [code assistant](https://open-jarvis.github.io/OpenJarvis/user-guide/code-assistant/) · [scheduled monitor](https://open-jarvis.github.io/OpenJarvis/user-guide/scheduled-monitor/) · [chat simple](https://open-jarvis.github.io/OpenJarvis/user-guide/chat-simple/) · or the full [quickstart guide](https://open-jarvis.github.io/OpenJarvis/getting-started/quickstart/).
-
-### Skills
-
-Skills teach agents how to better use tools and improve their reasoning. Every skill is a tool — agents discover them from a catalog and invoke them on demand.
-
-```bash
-# Install skills from public sources
-jarvis skill install hermes:arxiv
-jarvis skill sync hermes --category research
-
-# Use skills with any agent
-jarvis ask "Use the code-explainer skill to explain this Python code: for i in range(5): print(i*2)"
-
-# Optimize skills from your trace history
-jarvis optimize skills --policy dspy
-
-# Benchmark the impact
-jarvis bench skills --max-samples 5 --seeds 42
-```
-
-Import from [Hermes Agent](https://github.com/NousResearch/hermes-agent) (~150 skills), [OpenClaw](https://github.com/openclaw/skills) (~13,700 community skills), or any GitHub repo. Skills follow the [agentskills.io](https://agentskills.io/specification) open standard.
-
-See the [Skills User Guide](https://open-jarvis.github.io/OpenJarvis/user-guide/skills/) and [Skills Tutorial](https://open-jarvis.github.io/OpenJarvis/tutorials/skills-workflow/) for details.
-
-### Built-in Agents
-
-OpenJarvis ships with eight built-in agents across three execution modes (on-demand, scheduled, continuous):
-
-| Agent | Type | What it does |
-|-------|------|-------------|
-| `morning_digest` | Scheduled | Daily briefing from email, calendar, health, news — with TTS audio |
-| `deep_research` | On-demand | Multi-hop research with citations across web and local docs |
-| `monitor_operative` | Continuous | Long-horizon monitoring with memory, compression, and retrieval |
-| `orchestrator` | On-demand | Multi-turn reasoning with automatic tool selection |
-| `native_react` | On-demand | ReAct (Thought-Action-Observation) loop agent |
-| `operative` | Continuous | Persistent autonomous agent with state management |
-| `native_openhands` | On-demand | CodeAct — generates and executes Python code |
-| `simple` | On-demand | Single-turn chat, no tools |
-
-See the [User Guide](https://open-jarvis.github.io/OpenJarvis/user-guide/morning-digest/) and [Tutorials](https://open-jarvis.github.io/OpenJarvis/tutorials/) for detailed setup instructions.
-
-Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[open-jarvis.github.io/OpenJarvis](https://open-jarvis.github.io/OpenJarvis/)**.
-
-## Community
-
-- **GitHub:** [github.com/open-jarvis/OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
-- **Discord:** [discord.gg/CMVBmDQ5Fj](https://discord.gg/CMVBmDQ5Fj)
-- **X / Twitter:** [@OpenJarvisAI](https://x.com/OpenJarvisAI)
-- **Docs:** [open-jarvis.github.io/OpenJarvis](https://open-jarvis.github.io/OpenJarvis/)
-
-## Contributing
-
-We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for incentives, contribution types, and the PR process.
-
-Quick start for contributors:
+Le istruzioni complete con versione, checksum, servizio Debian e smoke sono
+in [docs/BROWSER.md](docs/BROWSER.md). Per Chromium:
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
-uv sync --extra dev
-uv run pre-commit install
-uv run pytest tests/ -v
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[browser]'
+/opt/jarvis-lite/.venv/bin/python -m playwright install-deps chromium
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m playwright install chromium --only-shell
 ```
 
-Browse the [Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/) for areas where help is needed. Comment **"take"** on any issue to get auto-assigned.
+Nel file completo impostare `tools.browser=true`, aggiungere i quattro nomi
+browser a `tools.enabled` e mantenere `browser.backend="chromium"`.
+Per provare Obscura esiste `config/lite-obscura.toml`, esplicito e senza fallback.
+Il backend si inizializza solo alla prima chiamata browser; una nuova sessione
+isolata per sistema, un solo thread, nessun profilo personale.
 
-## About
+Il controllo iniziale prova realmente l'intercettazione; se non funziona,
+l'avvio fallisce. Il fallback avviene solo con `browser.fallback="chromium"`,
+soltanto all'avvio, con warning e backend effettivo nei metadati. Nessun replay
+di un click o di una scrittura dopo un errore. Click/type conservano il gate
+di conferma: in chat è disponibile; per `ask` usare `--confirm`.
 
-OpenJarvis is part of [Intelligence Per Watt](https://www.intelligence-per-watt.ai/), a research initiative studying the intelligence efficiency of AI systems. The project is developed at [Hazy Research](https://hazyresearch.stanford.edu/) and the [Scaling Intelligence Lab](https://scalingintelligence.stanford.edu/) at [Stanford SAIL](https://ai.stanford.edu/).
+Privati, metadata, schemi non HTTP(S), WebSocket e service worker sono bloccati.
+**I redirect HTTP con Location sono rifiutati anche se pubblici**, perché il
+routing Playwright non garantisce una callback per ogni hop. Usare l'URL finale.
+Le richieste passano da `route.fetch(max_redirects=0)` prima di essere consegnate
+al renderer. Queste protezioni non sono una sandbox di rete: DNS rebinding,
+canali non intercettati e limiti del browser richiedono filtri egress sul CT.
+Non abilitare override fail-open né accesso alla LAN per il browser. L'endpoint
+Ollama resta raggiungibile dall'adapter, separato dal pack browser.
 
-## Sponsors
+## Limiti runtime e SDK
 
-<p>
-  <a href="https://www.laude.org/">Laude Institute</a> &bull;
-  <a href="https://datascience.stanford.edu/marlowe">Stanford Marlowe</a> &bull;
-  <a href="https://cloud.google.com/">Google Cloud Platform</a> &bull;
-  <a href="https://lambda.ai/">Lambda Labs</a> &bull;
-  <a href="https://ollama.com/">Ollama</a> &bull;
-  <a href="https://research.ibm.com/">IBM Research</a> &bull;
-  <a href="https://hai.stanford.edu/">Stanford HAI</a>
-</p>
+Default invariati: 6 generazioni, 5 chiamate sequenziali, output tool di 1200
+caratteri, payload massimo di 12000 byte, `num_ctx=8192`, `max_tokens=512`.
+Il limite byte non è una misura esatta dei token. Memoria, vault, file e browser
+richiedono almeno una chiamata tool; un richiamo, poi mancata verifica esplicita.
+Gli esiti incompleti CLI escono con codice 2. Timeout fermano il loop senza retry;
+Python non può interrompere forzatamente un tool già in esecuzione.
 
-## Citation
-```bibtex
-@misc{saadfalcon2026openjarvispersonalaipersonal,
-      title={OpenJarvis: Personal AI, On Personal Devices}, 
-      author={Jon Saad-Falcon and Avanika Narayan and Robby Manihani and Tanvir Bhathal and Herumb Shandilya and Hakki Orhun Akengin and Gabriel Bo and Andrew Park and Matthew Hart and Caia Costello and Chuan Li and Christopher Ré and Azalia Mirhoseini},
-      year={2026},
-      eprint={2605.17172},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2605.17172}, 
-}
+```python
+from openjarvis import Jarvis
+with Jarvis(config_path="config/lite.toml") as jarvis:
+    result = jarvis.ask("Cerca Petalo", pack="knowledge")
+    print(result["content"])
 ```
 
-## License
+Laya potrà passare un nome pack alla stessa API. Nessun server HTTP,
+scheduler, speech, training, agenti avanzati o discovery in questa distribuzione.
+Licenza Apache 2.0 upstream conservata.
 
-[Apache 2.0](LICENSE)
+## Verifiche
+
+```bash
+python -m pip install '.[dev]'
+python -m pytest -q -rs
+python -m ruff check src tests
+python -m build
+```
+
+Vedere [VALIDATION](docs/VALIDATION.md) per risultati e limiti osservati,
+[LITE_PLAN](docs/LITE_PLAN.md) per architettura e
+[REDUCTION_MANIFEST](docs/REDUCTION_MANIFEST.md) per file cambiati.

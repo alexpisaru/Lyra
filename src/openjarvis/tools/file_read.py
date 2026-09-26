@@ -29,13 +29,15 @@ class FileReadTool(BaseTool):
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="file_read",
-            description=("Read the contents of a file. Returns the text content."),
+            description=(
+                "Read a text file inside the configured workspace. Relative paths start at that workspace."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Path to the file to read.",
+                        "description": "File path, preferably relative to the workspace (example: notes.txt).",
                     },
                     "max_lines": {
                         "type": "integer",
@@ -52,9 +54,7 @@ class FileReadTool(BaseTool):
         if not self._allowed_dirs:
             return True
         resolved = path.resolve()
-        return any(
-            resolved == d or resolved.is_relative_to(d) for d in self._allowed_dirs
-        )
+        return any(resolved == d or resolved.is_relative_to(d) for d in self._allowed_dirs)
 
     def execute(self, **params: Any) -> ToolResult:
         file_path = params.get("path", "")
@@ -64,7 +64,9 @@ class FileReadTool(BaseTool):
                 content="No path provided.",
                 success=False,
             )
-        path = Path(file_path)
+        path = Path(file_path).expanduser()
+        if not path.is_absolute() and self._allowed_dirs:
+            path = self._allowed_dirs[0] / path
         # Block sensitive files (secrets, credentials, keys)
         from openjarvis.security.file_policy import is_sensitive_file
 

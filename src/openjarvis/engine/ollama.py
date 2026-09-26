@@ -191,20 +191,17 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                 payload["format"] = "json"
         try:
             resp = self._client.post("/api/chat", json=payload)
-            if resp.status_code == 400 and tools:
-                # Model may not support function calling -- retry without tools
-                payload.pop("tools", None)
-                resp = self._client.post("/api/chat", json=payload)
             resp.raise_for_status()
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except httpx.TimeoutException as exc:
             raise EngineConnectionError(
-                f"Ollama not reachable at {self._host}"
+                f"Ollama request timed out after {self._timeout:g}s at {self._host}; "
+                "generation did not finish in time"
             ) from exc
+        except httpx.ConnectError as exc:
+            raise EngineConnectionError(f"Ollama not reachable at {self._host}") from exc
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:500] if exc.response else ""
-            raise RuntimeError(
-                f"Ollama returned {exc.response.status_code}: {body}"
-            ) from exc
+            raise RuntimeError(f"Ollama returned {exc.response.status_code}: {body}") from exc
         data = resp.json()
         # prompt_eval_count = tokens actually evaluated (KV-cache-aware).
         # estimate_prompt_tokens = full prompt size (for cost comparison).
@@ -214,9 +211,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         reported_prompt = data.get("prompt_eval_count", 0)
         estimated_prompt = estimate_prompt_tokens(messages)
         prompt_tokens = max(reported_prompt, estimated_prompt)
-        prompt_tokens_evaluated = (
-            reported_prompt if reported_prompt > 0 else prompt_tokens
-        )
+        prompt_tokens_evaluated = reported_prompt if reported_prompt > 0 else prompt_tokens
         completion_tokens = data.get("eval_count", 0)
         content = data.get("message", {}).get("content", "")
         result: Dict[str, Any] = {
@@ -228,7 +223,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                 "total_tokens": prompt_tokens + completion_tokens,
             },
             "model": data.get("model", model),
-            "finish_reason": "stop",
+            "finish_reason": data.get("done_reason", "stop"),
         }
         # Extract timing from Ollama response (nanoseconds → seconds)
         result["ttft"] = data.get("prompt_eval_duration", 0) / 1e9
@@ -261,9 +256,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                         "id": tc.get("id", f"call_{i}"),
                         "name": fn.get("name", ""),
                         "arguments": (
-                            json.dumps(raw_args)
-                            if isinstance(raw_args, dict)
-                            else raw_args
+                            json.dumps(raw_args) if isinstance(raw_args, dict) else raw_args
                         ),
                     }
                 )
@@ -332,9 +325,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                         reported_prompt = chunk.get("prompt_eval_count", 0)
                         est_prompt = estimate_prompt_tokens(messages)
                         full_prompt = max(reported_prompt, est_prompt)
-                        evaluated = (
-                            reported_prompt if reported_prompt > 0 else full_prompt
-                        )
+                        evaluated = reported_prompt if reported_prompt > 0 else full_prompt
                         comp = chunk.get("eval_count", 0)
                         self._last_stream_usage = {
                             "prompt_tokens": full_prompt,
@@ -347,9 +338,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             # Transport failures (incl. a mid-stream server disconnect) map to a
             # clean error; the set is kept narrow (see STREAM_TRANSPORT_ERRORS)
             # so cancellation still propagates.
-            raise EngineConnectionError(
-                f"Ollama not reachable at {self._host}"
-            ) from exc
+            raise EngineConnectionError(f"Ollama not reachable at {self._host}") from exc
 
     async def stream_full(
         self,
@@ -398,9 +387,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         if tools:
             payload["tools"] = tools
 
-        async for chunk in self._run_stream(
-            payload, messages, retry_without_tools=bool(tools)
-        ):
+        async for chunk in self._run_stream(payload, messages, retry_without_tools=bool(tools)):
             yield chunk
 
     async def _run_stream(
@@ -423,9 +410,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     # tools-less retry; only OTHER non-2xx responses map to
                     # EngineConnectionError below.
                     payload.pop("tools", None)
-                    async for c in self._run_stream(
-                        payload, messages, retry_without_tools=False
-                    ):
+                    async for c in self._run_stream(payload, messages, retry_without_tools=False):
                         yield c
                     return
                 # ``not is_success`` covers 3xx as well as 4xx/5xx and maps
@@ -495,9 +480,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                         reported_prompt = chunk.get("prompt_eval_count", 0)
                         est_prompt = estimate_prompt_tokens(messages)
                         full_prompt = max(reported_prompt, est_prompt)
-                        evaluated = (
-                            reported_prompt if reported_prompt > 0 else full_prompt
-                        )
+                        evaluated = reported_prompt if reported_prompt > 0 else full_prompt
                         comp = chunk.get("eval_count", 0)
                         self._last_stream_usage = {
                             "prompt_tokens": full_prompt,
@@ -516,9 +499,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             # See ``stream``: transport failures (incl. a mid-stream server
             # disconnect) map to a clean error; the set is kept narrow so
             # cancellation still propagates.
-            raise EngineConnectionError(
-                f"Ollama not reachable at {self._host}"
-            ) from exc
+            raise EngineConnectionError(f"Ollama not reachable at {self._host}") from exc
 
     def list_models(self) -> List[str]:
         try:

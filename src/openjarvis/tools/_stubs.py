@@ -14,6 +14,8 @@ import logging
 import queue
 import threading
 import time
+
+from jsonschema import Draft202012Validator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -23,8 +25,8 @@ from openjarvis.core.types import ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
 
-_MAX_TOOL_WORKERS = 8
-_MAX_PENDING_TOOL_CALLS = 8
+_MAX_TOOL_WORKERS = 2
+_MAX_PENDING_TOOL_CALLS = 2
 _STOP_WORKER = object()
 
 
@@ -157,26 +159,13 @@ class BaseTool(ABC):
         """Execute the tool with the given parameters."""
 
     def to_openai_function(self) -> Dict[str, Any]:
-        """Convert to OpenAI function-calling format."""
-        from openjarvis.tools.description_loader import (
-            get_tool_description_override,
-        )
-
-        s = self.spec
-        desc = get_tool_description_override(s.name) or s.description
+        spec = self.spec
+        schema = dict(spec.parameters)
+        schema["additionalProperties"] = False
         return {
             "type": "function",
-            "function": {
-                "name": s.name,
-                "description": desc,
-                "parameters": s.parameters,
-            },
+            "function": {"name": spec.name, "description": spec.description, "parameters": schema},
         }
-
-
-# ---------------------------------------------------------------------------
-# ToolExecutor — dispatch engine for tool calls
-# ---------------------------------------------------------------------------
 
 
 class ToolExecutor:
@@ -261,7 +250,7 @@ class ToolExecutor:
         # Parse arguments
         try:
             params = json.loads(tool_call.arguments) if tool_call.arguments else {}
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, TypeError) as exc:
             return ToolResult(
                 tool_name=tool_call.name,
                 content=f"Invalid arguments JSON: {exc}",
@@ -271,18 +260,24 @@ class ToolExecutor:
             return ToolResult(
                 tool_name=tool_call.name,
                 content=(
-                    "Invalid arguments: expected a JSON object, "
-                    f"got {type(params).__name__}."
+                    f"Invalid arguments: expected a JSON object, got {type(params).__name__}."
                 ),
                 success=False,
+            )
+
+        schema = dict(tool.spec.parameters)
+        schema["additionalProperties"] = False
+        errors = list(Draft202012Validator(schema).iter_errors(params))
+        if errors:
+            detail = errors[0].message[:300]
+            return ToolResult(
+                tool_name=tool_call.name, content=f"Invalid arguments: {detail}", success=False
             )
 
         # Rate limiting — checked before any other gate so a hammering
         # agent/skill can't burn through boundary/capability/taint checks.
         if self._rate_limiter is not None:
-            allowed, wait_seconds = self._rate_limiter.check(
-                f"{self._agent_id}:{tool_call.name}"
-            )
+            allowed, wait_seconds = self._rate_limiter.check(f"{self._agent_id}:{tool_call.name}")
             if not allowed:
                 if self._bus:
                     self._bus.publish(
@@ -434,7 +429,8 @@ class ToolExecutor:
         # Execute with timeout
         timeout = tool.spec.timeout_seconds or self._default_timeout
         t0 = time.time()
-        future = _TOOL_RUNNER.submit(tool.execute, **params)
+        runner = getattr(tool, "execution_runner", _TOOL_RUNNER)
+        future = runner.submit(tool.execute, **params)
         try:
             if future is None:
                 result = ToolResult(
@@ -461,6 +457,7 @@ class ToolExecutor:
                 tool_name=tool_call.name,
                 content=(f"Tool '{tool_call.name}' timed out after {timeout:.0f}s."),
                 success=False,
+                metadata={"timeout": True, "outcome_unknown": future.running()},
             )
         except Exception as exc:
             result = ToolResult(
@@ -585,73 +582,3 @@ class ToolExecutor:
     def get_openai_tools(self) -> List[Dict[str, Any]]:
         """Return tools in OpenAI function-calling format."""
         return [t.to_openai_function() for t in self._tools.values()]
-
-
-def build_tool_descriptions(
-    tools: List[BaseTool],
-    *,
-    include_category: bool = True,
-    include_cost: bool = False,
-) -> str:
-    """Build rich text descriptions from a list of tools.
-
-    This is the single source of truth for all text-based agents that need
-    to describe available tools in their system prompts.
-
-    Parameters
-    ----------
-    tools:
-        List of tool instances.
-    include_category:
-        Whether to include the ``Category:`` line.
-    include_cost:
-        Whether to include ``Cost estimate:`` and ``Latency estimate:`` lines.
-
-    Returns
-    -------
-    str
-        Formatted multi-tool description, or ``"No tools available."`` if
-        *tools* is empty.
-    """
-    if not tools:
-        return "No tools available."
-
-    from openjarvis.tools.description_loader import (
-        get_tool_description_override,
-    )
-
-    sections: list[str] = []
-    for t in tools:
-        s = t.spec
-        desc = get_tool_description_override(s.name) or s.description
-        lines = [f"### {s.name}", desc]
-
-        if include_category and s.category:
-            lines.append(f"Category: {s.category}")
-
-        if include_cost:
-            if s.cost_estimate:
-                lines.append(f"Cost estimate: ${s.cost_estimate:.4f}")
-            if s.latency_estimate:
-                lines.append(f"Latency estimate: {s.latency_estimate:.1f}s")
-
-        # Parameter descriptions
-        props = s.parameters.get("properties", {})
-        required = set(s.parameters.get("required", []))
-        if props:
-            lines.append("Parameters:")
-            for pname, pinfo in props.items():
-                ptype = pinfo.get("type", "any")
-                req_mark = ", required" if pname in required else ""
-                desc = pinfo.get("description", "")
-                if desc:
-                    lines.append(f"  - {pname} ({ptype}{req_mark}): {desc}")
-                else:
-                    lines.append(f"  - {pname} ({ptype}{req_mark})")
-
-        sections.append("\n".join(lines))
-
-    return "\n\n".join(sections)
-
-
-__all__ = ["BaseTool", "ToolExecutor", "ToolSpec", "build_tool_descriptions"]

@@ -131,9 +131,7 @@ class CalculatorTool(BaseTool):
                 "properties": {
                     "expression": {
                         "type": "string",
-                        "description": (
-                            "Math expression to evaluate (e.g. '2+3*4', 'sqrt(16)')"
-                        ),
+                        "description": ("Math expression to evaluate (e.g. '2+3*4', 'sqrt(16)')"),
                     },
                 },
                 "required": ["expression"],

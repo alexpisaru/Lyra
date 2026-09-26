@@ -87,9 +87,7 @@ def check_taint(tool_name: str, taint: TaintSet) -> Optional[str]:
         return None
     violations = taint.labels & forbidden
     if violations:
-        labels_str = ", ".join(
-            v.value for v in sorted(violations, key=lambda x: x.value)
-        )
+        labels_str = ", ".join(v.value for v in sorted(violations, key=lambda x: x.value))
         return f"Data with labels [{labels_str}] cannot be sent to '{tool_name}'."
     return None
 

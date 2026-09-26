@@ -1,0 +1,28 @@
+{
+  "date": "2026-09-26",
+  "platform": "Windows x86_64",
+  "python": "3.12",
+  "playwright": "1.63.0",
+  "chromium": {
+    "version": "153.0.8010.12",
+    "result": "passed",
+    "tests": 1,
+    "seconds": 1.72,
+    "redirect_source_hits": 1,
+    "private_destination_hits": 0
+  },
+  "obscura": {
+    "version": "0.2.3",
+    "result": "failed",
+    "stage": "startup interception probe",
+    "observed": [
+      "network error for .invalid synthetic probe",
+      "same result with page route",
+      "5000ms timeout with public resolvable probe"
+    ],
+    "promoted_to_default": false
+  },
+  "ct_modified": false,
+  "linux_verified": false,
+  "ollama_contacted": false
+}

@@ -92,9 +92,7 @@ class TestFileReadTool:
     @pytest.mark.parametrize(
         "alias_name,target_name", [("notes.txt", ".env"), (".env", "notes.txt")]
     )
-    def test_blocks_symlink_alias_to_sensitive_file(
-        self, tmp_path, alias_name, target_name
-    ):
+    def test_blocks_symlink_alias_to_sensitive_file(self, tmp_path, alias_name, target_name):
         sensitive = tmp_path / target_name
         sensitive.write_text("SECRET=foo", encoding="utf-8")
         alias = tmp_path / alias_name
