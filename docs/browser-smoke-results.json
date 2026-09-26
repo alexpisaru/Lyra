@@ -24,5 +24,29 @@
   },
   "ct_modified": false,
   "linux_verified": false,
-  "ollama_contacted": false
+  "ollama_contacted": false,
+  "chromium_2026_09_27": {
+    "version": "153.0.8010.12",
+    "playwright": "1.63.0",
+    "platform": "Windows x86_64",
+    "result": "passed",
+    "runs": "4+ consecutive passes",
+    "covers": [
+      "interception probe",
+      "example.com",
+      "form type/click/extract",
+      "LAN URL refused",
+      "WebRTC constructors absent in page and iframe, no loopback TCP connection",
+      "302 to private path blocked, server saw only first hop",
+      "validated redirect chain /hop1->/hop2->/final followed",
+      "private subresource redirect blocked, /private never hit"
+    ],
+    "linux_verified": false
+  },
+  "obscura_2026_09_27": {
+    "rerun": false,
+    "status": "EXPERIMENTAL",
+    "latest_release_checked": "v0.2.3",
+    "linux_verified": false
+  }
 }

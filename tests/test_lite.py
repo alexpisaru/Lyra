@@ -268,6 +268,7 @@ def test_history_only_complete_pairs(config):
 def test_all_pack_schemas_stay_small(config, tmp_path):
     config.tools.browser = True
     config.tools.enabled.extend(PACKS["browser"] + PACKS["knowledge"])
+    config.knowledge.enabled = True
     config.knowledge.vault_path = str(tmp_path / "vault")
     with SystemBuilder(config).build() as system:
         sizes = {}
@@ -428,3 +429,52 @@ def test_cli_incomplete_result_has_nonzero_exit_and_valid_json(monkeypatch):
     result = CliRunner().invoke(cli, ["ask", "Ricordi?", "--pack", "memory", "--json"])
     assert result.exit_code == 2
     assert json.loads(result.output)["metadata"]["missing_tool_use"]
+
+
+def _check_config(tmp_path, extra=""):
+    vault, state = tmp_path / "vault", tmp_path / "state"
+    path = tmp_path / "config.toml"
+    path.write_text(
+        f'[engine]\nhost = "http://ollama.test:11434"\nmodel = "m:q8"\n'
+        f"[knowledge]\nenabled = true\nvault_path = {json.dumps(str(vault))}\n"
+        f"[memory]\ndb_path = {json.dumps(str(state / 'memory.db'))}\n{extra}"
+    )
+    return path, vault, state
+
+
+def test_cli_check_reports_ollama_vault_memory_and_browser(monkeypatch, tmp_path):
+    monkeypatch.setattr(OllamaEngine, "health", lambda self: True)
+    monkeypatch.setattr(OllamaEngine, "list_models", lambda self: ["m:q8"])
+    path, vault, state = _check_config(tmp_path, '[tools]\nbrowser = true\n[browser]\nbackend = "obscura"')
+    result = CliRunner().invoke(cli, ["--config", str(path), "check"])
+    # Directories are reported, never created by check.
+    assert result.exit_code == 1 and "controlli falliti: memory, knowledge" in result.output
+    assert not vault.exists() and not state.exists()
+    assert "obscura (EXPERIMENTAL)" in result.output and "check --browser" in result.output
+    vault.mkdir()
+    state.mkdir()
+    result = CliRunner().invoke(cli, ["--config", str(path), "check"])
+    assert result.exit_code == 0, result.output
+    assert "[OK] ollama: http://ollama.test:11434, modello m:q8" in result.output
+    monkeypatch.setattr(OllamaEngine, "list_models", lambda self: ["other"])
+    result = CliRunner().invoke(cli, ["--config", str(path), "check"])
+    assert result.exit_code == 1 and "modello assente: m:q8" in result.output
+
+
+def test_cli_check_browser_probe_failure_is_explicit(monkeypatch, tmp_path):
+    from openjarvis.tools.browser import _BrowserSession
+
+    monkeypatch.setattr(OllamaEngine, "health", lambda self: True)
+    monkeypatch.setattr(OllamaEngine, "list_models", lambda self: ["m:q8"])
+
+    def no_interception(self):
+        raise RuntimeError("Browser does not implement required request interception")
+
+    monkeypatch.setattr(_BrowserSession, "_ensure_browser", no_interception)
+    path, vault, state = _check_config(tmp_path, '[tools]\nbrowser = true\n[browser]\nbackend = "obscura"')
+    vault.mkdir()
+    state.mkdir()
+    result = CliRunner().invoke(cli, ["--config", str(path), "check", "--browser"])
+    assert result.exit_code == 1
+    assert "[ERRORE] browser: avvio/probe falliti" in result.output
+    assert "interception" in result.output

@@ -1,28 +1,50 @@
-# Collaudo sul CT — da eseguire dopo la preparazione
+# Collaudo sul CT Jarvis — da eseguire dopo l'installazione
 
-Questa sessione ha preparato il progetto sul PC; nessuna installazione sul CT.
-Seguire i comandi del README per Debian 12/13 x86_64 e usare l'utente `jarvis`.
+Nulla di questo è stato eseguito sul CT. Installazione: README. Utente `jarvis`,
+sorgente in `/opt/jarvis-lite`, venv in `/opt/jarvis-lite/.venv`.
 
-1. Verificare Python 3.11–3.13, FTS5 e installazione senza dipendenze browser.
-2. `jarvis --config config/lite.toml check`: deve trovare il modello esatto
-   `openbmb/minicpm5-2b:q8_0` su `http://192.168.1.252:11434`.
-3. Calcolo `17*23`, pack general: risultato 391 e tool riuscito.
-4. Scrivere `collaudo.md` nel pack knowledge con `ORCHIDEA-742`; leggere e
-   aggiungere una seconda riga. Verificare fisicamente `/srv/jarvis-vault/collaudo.md`.
-5. Riavviare Jarvis: search/read devono recuperare il file; modificare il Markdown
-   fuori da Jarvis, ripetere search e verificare il nuovo testo. Poi rinominarlo
-   ed eliminarlo per verificare l'aggiornamento dell'indice in RAM.
-6. I test unitari di confinement devono passare su Linux, inclusi symlink/hardlink
-   e file speciali. `../`, percorsi assoluti e directory `.obsidian` devono fallire.
-7. Salvare una memoria con `--pack memory`: il database separato conserva il dato,
-   il vault non cambia. Per note preesistenti 0.1 usare questo pack.
-8. Installare browser solo se necessario. Eseguire lo smoke di BROWSER.md.
-   Obscura resta sperimentale fino a esito positivo sul CT: non disattivare il probe.
-9. Per click/type usare chat oppure `ask --confirm`. I redirect HTTP vengono
-   rifiutati intenzionalmente; fornire URL finali. LAN e metadata restano vietati.
-10. Verificare backup separato vault/memoria, directory scrivibili da `jarvis`,
-    egress CT e assenza di una porta CDP esposta sulla LAN.
+## Automatico
 
-Annotare versione Debian, Python, Playwright, Obscura, tempi, esiti e consumo RAM.
-Non dedurre affidabilità del modello dai soli test mocked; conservare anche i
-fallimenti e controllare `tool_results`, non soltanto la risposta in linguaggio naturale.
+```bash
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[dev]'
+runuser -u jarvis -- bash /opt/jarvis-lite/scripts/ct-acceptance.sh
+# con browser installato:
+runuser -u jarvis -- env BROWSER=chromium CONFIG=config/lite-chromium.toml bash /opt/jarvis-lite/scripts/ct-acceptance.sh
+runuser -u jarvis -- env BROWSER=obscura CONFIG=config/lite-obscura.toml bash /opt/jarvis-lite/scripts/ct-acceptance.sh
+```
+
+Lo script scrive `acceptance-<data>/` con ambiente (OS, glibc, Python, SQLite/FTS5,
+Playwright), log per passo e `live-acceptance.json`, e stampa PASS/FAIL per:
+
+1. suite completa — su Linux devono **passare**, non essere saltati, i test
+   symlink/hardlink (vault e file_read) e FIFO; attesi al massimo lo smoke opt-in
+   come skip;
+2. `jarvis check` — Ollama `192.168.1.252:11434`, modello esatto, `/srv/jarvis-state`
+   e `/srv/jarvis-vault` scrivibili;
+3. con `BROWSER`: `check --browser` (probe reale) e `tests/test_browser_smoke.py`;
+4. `scripts/live_acceptance.py` con MiniCPM reale su vault temporaneo:
+   write, file su disco, search, modifica esterna + search, read, memoria separata
+   dal vault, retrieve, (browser).
+
+`SKIP_LIVE=1` salta il passo 4. Un FAIL non va trasformato in successo: annotarlo.
+
+## Manuale (vault reale e Obsidian)
+
+1. `ask --json 'Usa notes_write per creare collaudo.md con il testo ORCHIDEA-742'`,
+   poi verificare `/srv/jarvis-vault/collaudo.md` sul disco.
+2. Aprire il vault con Obsidian (via mount/sync), modificare `collaudo.md`,
+   poi `ask --json 'Cerca <testo nuovo> nelle note'`: deve trovarlo.
+3. Rinominare e poi cancellare il file da Obsidian: la ricerca deve seguire.
+4. `ask --json --pack knowledge 'Leggi ../etc/passwd'` e `'Leggi .obsidian/app.json'`:
+   il tool deve rifiutare.
+5. `ask --json 'Memorizza nella memoria: …'`: cambia solo `/srv/jarvis-state/memory.db`.
+6. Browser: `ask --json 'Apri https://example.com'` ok; `'Apri http://192.168.1.252:11434'`
+   deve essere bloccato. Click/type: `chat` o `ask --confirm`.
+7. Obscura: resta EXPERIMENTAL finché passi 3 (check --browser + smoke) non sono
+   PASS sul CT. Non disattivare il probe, non usare `--allow-private-network`.
+8. Rete: porta CDP 9222 non raggiungibile dalla LAN (`ss -ltnp | grep 9222` deve
+   mostrare solo `127.0.0.1`). Consigliato firewall Proxmox egress per il CT Jarvis.
+9. Backup separati di `/srv/jarvis-vault` (Markdown) e `/srv/jarvis-state`.
+
+Annotare Debian/Ubuntu, Python, Playwright, Obscura, tempi, esiti, RAM.
+Controllare sempre `tool_results`, non solo la risposta in linguaggio naturale.

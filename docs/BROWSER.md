@@ -1,36 +1,53 @@
 # Browser Linux/CT — backend espliciti
 
-Verifica documentale del 26 settembre 2026:
+Il modello vede sempre gli stessi quattro tool (`browser_navigate`,
+`browser_click`, `browser_type`, `browser_extract`). `browser.backend` sceglie
+soltanto come Playwright ottiene il browser:
 
-- [Obscura v0.2.3](https://github.com/h4ckf0r0day/obscura/releases/tag/v0.2.3)
-- [README della versione](https://github.com/h4ckf0r0day/obscura/blob/v0.2.3/README.md)
-- [Playwright/CDP](https://github.com/h4ckf0r0day/obscura/blob/v0.2.3/docs/Use-with-Playwright.md)
-- [Variabili d'ambiente](https://github.com/h4ckf0r0day/obscura/blob/v0.2.3/docs/Environment-variables.md)
-- [Playwright route](https://playwright.dev/python/docs/api/class-route)
+| backend | Come | Stato |
+|---|---|---|
+| `chromium` (default) | `chromium.launch(headless=True)` locale | **Stabile**. Smoke reale superato su Windows (Playwright 1.63, headless shell 153). NOT VERIFIED ON TARGET LINUX CT |
+| `obscura` | `chromium.connect_over_cdp(cdp_url)` verso un server Obscura su loopback | **EXPERIMENTAL**. v0.2.3 fallisce il probe di intercettazione su Windows. NOT VERIFIED ON TARGET LINUX CT |
 
-La distribuzione ufficiale include binari Linux x86_64. Il README richiede
-glibc 2.35+: Debian 12/13 è il target consigliato; Debian 11 non basta.
-CDP è il protocollo documentato, via `chromium.connect_over_cdp`, non `connect`.
-La documentazione espone anche l'intercettazione delle richieste. La sua
-compatibilità effettiva deve però passare il test Jarvis, non basta accettare
-un comando CDP senza errore.
+## Fonti Obscura (ricontrollate il 27 settembre 2026)
 
-**Stato:** v0.2.3 Windows + Playwright 1.63.0 fallisce il probe di intercettazione
-su una pagina sintetica `.invalid`, sia con route sul contesto sia sulla pagina.
-La connessione CDP riesce ma il browser tenta il fetch invece del fulfill locale.
-Jarvis rifiuta la sessione; nessun fallback implicito. Non è una prova Linux,
-né una diagnosi della causa interna di Obscura. Anche un probe diagnostico
-con hostname pubblico risolvibile è fallito per timeout. Perciò il default resta Chromium.
-Promuovere Obscura a scelta preferita solo dopo il medesimo smoke sul CT.
+- [Release v0.2.3](https://github.com/h4ckf0r0day/obscura/releases/tag/v0.2.3),
+  pubblicata il 20/09/2026, **ultima release disponibile** alla data del controllo.
+- [README](https://github.com/h4ckf0r0day/obscura/blob/v0.2.3/README.md),
+  [Playwright/CDP](https://github.com/h4ckf0r0day/obscura/blob/v0.2.3/docs/Use-with-Playwright.md),
+  [variabili d'ambiente](https://github.com/h4ckf0r0day/obscura/blob/v0.2.3/docs/Environment-variables.md).
+- Digest SHA-256 dall'API GitHub della release:
+  - `obscura-x86_64-linux.tar.gz`: `1534d1e6ddaf3d080ec4091eb41d0a4d8cc042a48b607d3c410fc13b482a9eec`
+  - `obscura-x86_64-windows.zip`: `781a1b8bd12b65ec5aba95842e75e6f56b3101d360397506c0e35fe3f78536e8`
+    (coincide con l'archivio usato nello smoke Windows).
 
-## Installazione opzionale di Obscura
+Binari Linux x86_64 con glibc 2.35+ (Debian 12 = 2.36 ok, Ubuntu 22.04+ ok,
+Debian 11 no). Le note v0.2.3 citano autenticazione integrata per CDP/MCP: la
+configurazione Lite accetta solo `ws://IP-loopback:porta` senza token; se il
+server richiedesse un token la connessione fallisce in modo esplicito.
 
-Da eseguire soltanto dopo aver caricato Jarvis. Nessun comando di questa guida
-è stato eseguito sul server. Come root nel CT Debian 12/13 x86_64:
+## Stato reale di Obscura
+
+Smoke del 26/09/2026 (sessione precedente), Obscura v0.2.3 Windows +
+Playwright 1.63.0: la connessione CDP riesce, ma il probe di intercettazione
+fallisce. All'avvio Jarvis naviga verso `https://jarvis-interception.invalid/`
+e si aspetta che la route del contesto risponda con un contenuto sintetico;
+Obscura invece tenta il fetch di rete (errore; con un hostname pubblico: timeout
+di 5 s). Stesso esito con route sulla pagina. Causa interna non diagnosticata.
+
+Conseguenza: con Obscura il guard SSRF non potrebbe vedere le richieste, quindi
+**Jarvis rifiuta il backend**. Il probe esiste proprio per questo e non va
+disattivato. In questa sessione il binario Obscura non è stato rieseguito;
+l'esito Windows sopra non è generalizzato a Linux. Promuovere Obscura solo se
+`check --browser` e lo smoke qui sotto passano sul CT.
+
+## Installazione Obscura su Linux x86_64 (opzionale, sperimentale)
+
+Nessun comando è stato eseguito sul server. Come root nel CT Jarvis:
 
 ```bash
-uname -m
-getconf GNU_LIBC_VERSION
+uname -m                      # x86_64
+getconf GNU_LIBC_VERSION      # >= 2.35
 apt install -y curl ca-certificates
 install -d /opt/obscura-0.2.3
 cd /opt/obscura-0.2.3
@@ -39,51 +56,39 @@ echo '1534d1e6ddaf3d080ec4091eb41d0a4d8cc042a48b607d3c410fc13b482a9eec  obscura-
 tar -xzf obscura-x86_64-linux.tar.gz
 chmod 755 obscura obscura-worker
 ./obscura --version
-ldd ./obscura
+ldd ./obscura | grep 'not found' || echo 'librerie ok'
 ```
 
-Controllare che `ldd` non mostri librerie mancanti. Il digest è quello pubblicato
-nell'API GitHub per l'asset v0.2.3. Si usa l'archivio con rendering, senza stealth,
-e si tengono insieme i due binari ufficiali. Non serve compilare Rust o installare
-Chrome/Node. Un'immagine container ufficiale esiste, ma non è necessaria qui:
-il binario evita Docker annidato nel CT e dipendenze aggiuntive.
-
-Installare solamente il client Playwright nell'ambiente Jarvis:
+Archivio con rendering, senza stealth; tenere insieme `obscura` e
+`obscura-worker`. Non servono Rust, Node o Docker. Il client Playwright:
 
 ```bash
 runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[browser]'
 ```
 
-Per un primo test, in un terminale separato avviare il server CDP come utente
-dedicato (lo stesso `jarvis` va bene per il collaudo personale):
+Avvio manuale per il collaudo (terminale separato):
 
 ```bash
 runuser -u jarvis -- env OBSCURA_ALLOW_PRIVATE_NETWORK=0 OBSCURA_NAV_TIMEOUT_MS=15000 OBSCURA_CDP_COMMAND_TIMEOUT_MS=20000 OBSCURA_FETCH_TIMEOUT_MS=10000 /opt/obscura-0.2.3/obscura serve --host 127.0.0.1 --port 9222
 ```
 
-Il collegamento CDP è ammesso solo su IP loopback esplicito. Non esporre 9222
-alla LAN. La configurazione Lite non gestisce token CDP remoti, proxy o profili.
-Usare un processo dedicato; Jarvis chiude il proprio contesto e collegamento,
-non amministra il servizio esterno. Non passare `--allow-private-network`.
-L'upstream documenta un controllo di rete nativo aggiuntivo; il guard Jarvis usa
-anche il trasporto `route.fetch` di Playwright e non si affida solo a quel controllo.
-
-Per l'avvio persistente, dopo il collaudo copiare
-`config/obscura.service` in `/etc/systemd/system/obscura.service` e poi:
+Solo loopback: mai esporre 9222 alla LAN, mai `--allow-private-network`.
+Per l'avvio persistente, **dopo** un collaudo positivo:
 
 ```bash
+cp /opt/jarvis-lite/config/obscura.service /etc/systemd/system/obscura.service
 systemctl daemon-reload
 systemctl enable --now obscura
 systemctl status obscura
 ```
 
-Questo file è una ricetta fornita dal fork, non un'unità upstream certificata.
-Non è stato collaudato nel tuo LXC. Non attivarlo insieme al comando manuale
-sulla stessa porta. Non modifica né avvia un servizio Jarvis: Jarvis resta CLI/SDK.
+`config/obscura.service` è una ricetta di questo fork (utente `jarvis`,
+`ProtectSystem=strict`, `NoNewPrivileges`), non un'unità upstream, e non è
+stata provata nel CT. Non usarla insieme al comando manuale sulla stessa porta.
 
 ## Configurazione e fallback
 
-`config/lite-obscura.toml` contiene l'allowlist completa e:
+`config/lite-obscura.toml` è identico a `config/lite.toml` più browser attivo e:
 
 ```toml
 [browser]
@@ -92,39 +97,61 @@ cdp_url = "ws://127.0.0.1:9222"
 fallback = "none"
 ```
 
-Se si vuole esplicitamente ripiegare su Chromium all'avvio, installare prima
-Chromium come nel README e impostare `fallback="chromium"`. L'avviso compare
-su stderr; `metadata.browser_backend` e i metadati di navigate riportano il
-backend effettivo e la ragione. Non si cambia backend dopo un'azione fallita.
+- `fallback = "none"`: se CDP non risponde o il probe fallisce, il tool
+  restituisce errore e `check --browser` esce con codice 1. Nessun ripiego.
+- `fallback = "chromium"` (ammesso solo con `backend="obscura"`, richiede
+  Chromium installato): ripiego **solo all'avvio della sessione**, con
+  `RuntimeWarning` su stderr, `browser_backend="chromium"` e `fallback_reason`
+  nei metadati, e riga `FALLBACK da obscura` in `check --browser`. Mai cambio
+  di backend dopo un'azione già tentata.
 
 ## Smoke reale separato
 
-Con il servizio in esecuzione e la directory sorgente di Jarvis scrivibile
-dall'utente `jarvis`:
-
 ```bash
+# Probe del backend configurato (avvia davvero il browser):
+runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite-obscura.toml check --browser
+# Contratto completo (serve l'extra dev; la directory sorgente deve essere dell'utente jarvis):
 runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[dev,browser]'
 cd /opt/jarvis-lite
-runuser -u jarvis -- env JARVIS_BROWSER_SMOKE=obscura JARVIS_CDP_URL=ws://127.0.0.1:9222 /opt/jarvis-lite/.venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
-# Per verificare Chromium già installato:
-runuser -u jarvis -- env JARVIS_BROWSER_SMOKE=chromium /opt/jarvis-lite/.venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
+runuser -u jarvis -- env JARVIS_BROWSER_SMOKE=obscura JARVIS_CDP_URL=ws://127.0.0.1:9222 .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
+runuser -u jarvis -- env JARVIS_BROWSER_SMOKE=chromium .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
 ```
 
-Lo smoke non chiama Ollama. Prova probe CDP, pagina pubblica example.com,
-form deterministico, type/click/extract e redirect HTTP con un server locale
-temporaneo del test. Richiede accesso a example.com; un errore di rete non è un successo.
-In CI/unit test resta saltato per default. Non indebolire i controlli per farlo
-passare: un errore di intercettazione impedisce di promuovere quel backend.
+Oppure `BROWSER=obscura bash scripts/ct-acceptance.sh`. Lo smoke non chiama
+Ollama e verifica: probe di intercettazione, example.com reale, form
+deterministico con type/click/extract, rifiuto di 192.168.1.252, WebRTC assente
+(pagina e iframe) senza connessioni TCP verso un listener loopback, e con un
+server HTTP locale temporaneo: redirect verso path privato bloccato (il server
+riceve solo il primo hop), catena di redirect validata seguita
+(`/hop1 → /hop2 → /final`), redirect privato di una sottorisorsa bloccato.
+Nel test solo quei path fixture sono trattati come pubblici; il runtime non ha
+alcuna eccezione del genere. Richiede accesso a example.com: un errore di rete
+non è un successo.
 
 ## Confini del browser
 
-Un solo contesto senza persistenza, service worker e WebSocket bloccati,
-download rifiutati, popup chiusi; richieste HTTP(S) verificate con guard SSRF.
-Connessione 5 s CDP / 10 s Chromium, azioni 10 s, navigazione 15 s, fetch 10 s,
-timeout esterno tool 30 s. Il probe usa solo una risposta sintetica.
-Tutti i redirect HTTP con Location vengono rifiutati prima del secondo hop.
-Questo limita login e link abbreviati: fornire direttamente l'URL finale.
-La policy è identica per entrambi i backend e conserva il blocco LAN/metadata.
-I filtri DNS applicativi non sono pinning DNS: per siti ostili usare anche
-restrizioni egress di rete a livello CT. Il CDP loopback è un canale di controllo
-esplicito, non un'eccezione per la navigazione del modello.
+- Guard su ogni richiesta: solo HTTP(S) verso IP pubblici (`security/ssrf.py`:
+  privati, loopback, link-local, metadata, CGNAT/Tailscale, riservati, forme
+  IPv4 mascherate, IPv6 mapped/NAT64/6to4; DNS non risolvibile = blocco).
+- `route.fetch(max_redirects=0)`; un 3xx non viene mai consegnato al browser.
+  Verificato con Chromium reale: se la route risponde con un 3xx, Chromium segue
+  i salti successivi **senza** richiamare la route (i path intermedi arrivano al
+  server senza controllo). Invece Refresh header, `<meta refresh>` e navigazioni
+  JS generano nuove richieste che ripassano dal guard (verificato).
+- Redirect della navigazione principale in `browser_navigate`: `Location`
+  risolto, validato e riaperto come nuova navigazione sorvegliata, massimo 5
+  salti; metadati `redirects`. Una navigazione principale bloccata riceve una
+  pagina locale 403 «Blocked by Jarvis» (nessuna richiesta alla destinazione)
+  invece di un abort, che in Chromium lascerebbe una pagina d'errore capace di
+  interrompere la navigazione successiva.
+- WebRTC: `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` (Chromium)
+  e init script che rimuove `RTCPeerConnection` & co. in pagine, iframe e popup
+  (entrambi i backend). Verificato: senza queste misure una pagina invia STUN UDP
+  e apre TCP TURN verso loopback; il flag da solo blocca solo l'UDP.
+- Un contesto effimero, service worker e WebSocket bloccati, download rifiutati,
+  popup chiusi, un solo thread. Timeout: connessione 5 s CDP / 10 s Chromium,
+  azioni 10 s, navigazione 15 s, fetch 10 s, tool 30 s.
+- Non è una sandbox di rete: nessun pinning DNS (DNS rebinding tra controllo e
+  fetch), risoluzioni DNS/preconnect non sorvegliate. Per isolamento forte usare
+  il firewall Proxmox sul CT Jarvis (egress: DNS, Internet pubblico,
+  192.168.1.252:11434; niente altra LAN).

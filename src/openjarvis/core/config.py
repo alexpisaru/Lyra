@@ -22,6 +22,8 @@ class IntelligenceConfig:
 class EngineConfig:
     host: str = "http://127.0.0.1:11434"
     timeout: float = 120.0
+    # Optional spelling of intelligence.model next to the host; one value wins.
+    model: str = ""
 
 
 @dataclass
@@ -57,7 +59,8 @@ class MemoryConfig:
 
 @dataclass
 class KnowledgeConfig:
-    # An empty path disables the vault; the CT example explicitly enables it.
+    # Markdown vault (source of truth), separate from memory.db. Off by default.
+    enabled: bool = False
     vault_path: str = ""
 
 
@@ -105,11 +108,19 @@ class JarvisConfig:
         from openjarvis.tools.packs import PACKS
 
         self.browser.validate()
+        if self.engine.model:
+            if self.intelligence.model not in (self.engine.model, IntelligenceConfig.model):
+                raise ValueError("engine.model and intelligence.model disagree; set only one")
+            self.intelligence.model = self.engine.model
         vault = self.knowledge.vault_path
         if vault and not Path(vault).is_absolute():
             raise ValueError("knowledge.vault_path must be an absolute path")
-        if any(n.startswith("notes_") for n in self.tools.enabled) and not vault:
-            raise ValueError("Notes tools require knowledge.vault_path")
+        if self.knowledge.enabled and not vault:
+            raise ValueError("knowledge.enabled=true requires knowledge.vault_path")
+        if any(n.startswith("notes_") for n in self.tools.enabled) and not (
+            self.knowledge.enabled and vault
+        ):
+            raise ValueError("Notes tools require knowledge.enabled=true and knowledge.vault_path")
         if vault and Path(self.memory.db_path).expanduser().resolve().is_relative_to(
             Path(vault).resolve()
         ):

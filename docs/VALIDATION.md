@@ -1,3 +1,112 @@
+# Validazione 0.2.1 — 27 settembre 2026
+
+Verifica e completamento del fork 0.2 trovato nella cartella (nessuna riscrittura,
+nessuna installazione sul CT). Ambiente: Windows 11, Python 3.12 (venv temporaneo),
+Playwright 1.63.0, Chromium headless shell 153.0.8010.12.
+
+## Riepilogo
+
+| Verifica | Esito |
+|---|---|
+| Suite 0.2 trovata, prima delle modifiche | **232 passed, 6 skipped, 0 failed** |
+| Suite 0.2.1 finale | **264 passed, 6 skipped, 0 failed** |
+| Ruff `src tests scripts` | Tutti i controlli superati |
+| Smoke Chromium reale (`JARVIS_BROWSER_SMOKE=chromium`) | **1 passed**, ripetuto 3+ volte senza flakiness |
+| `jarvis check --browser` reale, backend chromium | OK: Ollama + modello presenti, intercettazione verificata |
+| MiniCPM reale, pack knowledge/memory/browser (runtime su PC, Ollama sul CT) | 3 giri: 7/7, 9/9, 8/8 a livello tool; prosa: vedi sotto |
+| Smoke Obscura | **Non rieseguito** in questa sessione; resta l'esito Windows negativo del 26/09 |
+| Qualunque cosa sul CT Linux | **NOT VERIFIED ON TARGET LINUX CT** |
+
+I 6 skip su Windows: 4 test symlink (2 upstream file_read, 2 vault) per permessi
+Windows, 1 test FIFO solo POSIX, 1 smoke browser opt-in (eseguito a parte). Su
+Linux i primi 5 devono girare: vanno visti passare nel CT (`scripts/ct-acceptance.sh`).
+
+## Problemi trovati e corretti
+
+1. **SSRF, range mancanti.** Il guard permetteva CGNAT `100.64.0.0/10` (reti
+   Tailscale), `198.18.0.0/15`, `240.0.0.0/4`, `192.0.0.0/24` e IPv6 NAT64
+   `64:ff9b::/96` / 6to4 `2002::/16` che incapsulano IPv4 LAN. Ora è bloccato
+   tutto ciò che non è `is_global`, con normalizzazione NAT64/6to4. Test aggiunti.
+2. **WebRTC aggirava l'intercettazione.** Verificato con Chromium reale: una pagina
+   inviava STUN UDP e apriva TCP (TURN) verso un listener su 127.0.0.1. Il flag
+   `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` ferma solo l'UDP;
+   aggiunto init script che rimuove i costruttori WebRTC (verificato anche contro
+   iframe `about:blank`, `srcdoc` e `window.open`). Asserzione nello smoke.
+3. **Redirect: comportamento verificato e migliorato.** Esperimento con server reale:
+   se la route consegna un 3xx a Chromium, i salti successivi arrivano alla rete
+   **senza** passare dalla route. Il blocco totale 0.2 era quindi corretto ma
+   bloccava anche redirect pubblici banali. Ora `browser_navigate` valida il
+   `Location` e lo riapre come nuova navigazione sorvegliata (max 5); un 3xx non
+   viene mai consegnato al browser; salti verso privati bloccati prima di ogni
+   richiesta. Refresh header, meta refresh e redirect JS ripassano dal guard
+   (verificato). Smoke esteso: catena `/hop1→/hop2→/final` seguita, redirect verso
+   `/private` e redirect privato di una sottorisorsa bloccati, `/private` mai
+   raggiunto dal server.
+4. **Navigazione dopo un blocco.** Un abort della navigazione principale fa
+   caricare a Chromium una pagina `chrome-error://` che interrompeva il `goto`
+   successivo (trovato dallo smoke). Ora la navigazione principale bloccata riceve
+   una pagina locale 403 «Blocked by Jarvis»; le sottorisorse restano in abort.
+5. **Click/type dopo richiesta bloccata** riportavano «Click error» anche se
+   l'azione era avvenuta, invitando a ripeterla. Ora il risultato dice che
+   l'azione è avvenuta e di non ripeterla.
+6. **Routing.** «Salva questa nota in memoria» dava errore di ambiguità: ora va a
+   memory quando l'unico indizio knowledge è la parola generica nota/note; con
+   vault/Obsidian/appunti/.md + memoria resta ambiguo. Hint memory senza la
+   parola «note» per non confondere i due archivi.
+7. **Config.** Aggiunti `knowledge.enabled` (esplicito, default false; i tool
+   notes lo richiedono) e `engine.model` (alternativa a `intelligence.model`,
+   conflitto = errore). Config CT aggiornate e validate da test.
+8. **`jarvis check`** controllava solo Ollama. Ora riporta anche memoria, vault,
+   backend browser (EXPERIMENTAL per Obscura) e con `--browser` esegue il probe
+   reale; nessuna directory viene creata; exit 1 su qualunque errore.
+9. **Output notes per un modello 2B.** Con testo nudo MiniCPM ha confuso un estratto
+   con un nome file e, dopo un `notes_read` riuscito, ha risposto «nota non trovata».
+   Output ora etichettato (`- nota: … / estratto: …`, `Nota X letta correttamente.
+   Contenuto:`). Nel giro successivo le risposte erano corrette (un solo giro: non
+   è una statistica).
+10. Aggiunti `scripts/ct-acceptance.sh` e `scripts/live_acceptance.py` per il
+    collaudo separato sul CT.
+
+Nulla è stato indebolito: probe di intercettazione, blocco LAN/metadata, conferme
+click/type, allowlist, limite 5 tool, rifiuto argomenti sconosciuti invariati.
+
+## Prove con MiniCPM reale (docs/live-0.2.1.json)
+
+Runtime Jarvis sul PC Windows, inferenza su `http://192.168.1.252:11434`
+(`openbmb/minicpm5-2b:q8_0`, solo chiamate `/api/tags` e `/api/chat`, nessuna
+modifica al CT Ollama). Vault e memoria in directory temporanee.
+
+- Routing automatico corretto in tutti i casi (knowledge, memory, browser).
+- `notes_write` crea il file su disco; `notes_search` trova il testo; dopo una
+  modifica esterna del Markdown (come da Obsidian) la ricerca trova il testo nuovo;
+  `notes_read` restituisce il contenuto aggiornato; `memory_store`/`memory_retrieve`
+  funzionano e non toccano il vault; `browser_navigate` su example.com via Chromium.
+- Tempi per richiesta 8–51 s (singole prove, non benchmark).
+- Limite osservato: la prosa finale di un modello 2B può contraddire l'output
+  dei tool (giri 1–2, prima della correzione 9). Controllare sempre `tool_results`.
+
+## Obscura
+
+Release v0.2.3 ancora l'ultima al 27/09/2026 (API GitHub); digest Linux e Windows
+ricontrollati e coincidenti con BROWSER.md. Il binario non è stato rieseguito in
+questa sessione. Stato: **EXPERIMENTAL, NOT VERIFIED ON TARGET LINUX CT**; su
+Windows il probe di intercettazione fallisce e Jarvis rifiuta il backend.
+Certificazione possibile solo con `check --browser` + smoke sul CT.
+
+## Numeri finali
+
+| Comando | Risultato |
+|---|---|
+| `python -m pytest -q -rs` | **264 passed, 6 skipped, 0 failed** (3.1 s) |
+| `JARVIS_BROWSER_SMOKE=chromium python -m pytest -q -rs tests/test_browser_smoke.py` | **1 passed** (4.9 s) |
+| `python -m ruff check src tests scripts` | All checks passed |
+| `python -m build` | sdist + wheel 0.2.1; wheel installata in venv pulito, `jarvis check` ok |
+
+Non eseguibili qui: suite su Linux (test symlink/hardlink/FIFO), installazione
+nel CT, Chromium su Linux, Obscura su Linux, servizio systemd, firewall Proxmox.
+
+---
+
 # Validazione 0.2 — vault e browser, 26 settembre 2026
 
 Modifiche applicate al fork Lite reale già preparato, senza ricostruirlo

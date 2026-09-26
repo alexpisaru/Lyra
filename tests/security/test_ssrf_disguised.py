@@ -34,6 +34,26 @@ class TestSSRFDisguisedForms:
         result = _check_ssrf_python("http://this-host-does-not-exist-zzz.invalid/")
         assert result is not None  # blocked, not silently allowed
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://100.100.1.5/",  # CGNAT / Tailscale tailnet
+            "http://198.18.0.1/",  # benchmark
+            "http://240.0.0.1/",  # reserved
+            "http://192.0.0.8/",  # IETF protocol assignments
+            "http://[64:ff9b::c0a8:1fc]/",  # NAT64 -> 192.168.1.252
+            "http://[2002:c0a8:1fc::1]/",  # 6to4 -> 192.168.1.252
+            "http://[::ffff:192.168.1.252]/",
+            "http://0.0.0.0/",
+        ],
+    )
+    def test_non_global_ranges_blocked(self, url):
+        assert _check_ssrf_python(url) is not None
+
+    @pytest.mark.parametrize("url", ["http://93.184.215.14/", "http://[2606:4700::1111]/"])
+    def test_public_literals_allowed(self, url):
+        assert _check_ssrf_python(url) is None
+
     def test_fail_open_override(self, monkeypatch):
         monkeypatch.setenv("OPENJARVIS_SSRF_FAIL_OPEN", "1")
         assert _check_ssrf_python("http://another-nonexistent-zzz.invalid/") is None

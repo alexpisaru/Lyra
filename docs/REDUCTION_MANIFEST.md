@@ -75,3 +75,20 @@ SERVER_ACCEPTANCE aggiornati; aggiunto `docs/BROWSER.md`.
 Playwright dell'extra sale da 1.40 a 1.48. Obscura è un binario esterno opzionale,
 non vendorizzato né scaricato dall'installazione base. Nessun pacchetto Obsidian.
 I 39 moduli Python Lite diventano 40. Le rimozioni upstream non vengono annullate.
+
+## Incremento 0.2.1
+
+Modificati sul posto: `security/ssrf.py`, `tools/browser.py`, `tools/knowledge.py`,
+`tools/packs.py`, `core/config.py`, `system/builder.py`, `cli/__init__.py`.
+Nessun nuovo modulo runtime (restano 40).
+
+Test: aggiornati `tests/test_browser_backends.py`, `tests/test_browser_smoke.py`,
+`tests/test_knowledge.py`, `tests/test_lite.py`, `tests/security/test_ssrf_disguised.py`.
+Nessuna prova esistente rimossa; alcune asserzioni adattate al nuovo contratto
+(redirect principale seguito solo dopo validazione, output notes etichettato,
+`knowledge.enabled` obbligatorio per i tool notes).
+
+Nuovi file: `scripts/ct-acceptance.sh`, `scripts/live_acceptance.py`, `config/lite-chromium.toml`,
+`docs/live-0.2.1.json`. Aggiornati: `config/lite.toml`, `config/lite-obscura.toml`,
+README e tutti i documenti in `docs/`. `pyproject.toml`: versione 0.2.1, `scripts`
+nel sorgente distribuito. `.gitignore`: output di collaudo. Nessuna dipendenza nuova.

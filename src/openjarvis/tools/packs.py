@@ -22,9 +22,9 @@ PACK_HINTS = {
     "general": "Per i calcoli richiesti usa calculator prima di fornire il risultato.",
     "files": "Per leggere un file devi chiamare file_read. Non conosci il contenuto in anticipo.",
     "memory": (
-        "Per cercare o ricordare note già salvate DEVI chiamare memory_retrieve prima di rispondere. "
-        "Non dire che una nota manca senza averla cercata. "
-        "Per salvare una nuova nota richiesta dall'utente usa memory_store."
+        "Per cercare o ricordare informazioni già memorizzate DEVI chiamare memory_retrieve "
+        "prima di rispondere. Non dire che un ricordo manca senza averlo cercato. "
+        "Per memorizzare una nuova informazione richiesta dall'utente usa memory_store."
     ),
     "knowledge": (
         "Le note sono file Markdown nel vault. Usa notes_search per cercare, notes_read per leggere. "
@@ -57,6 +57,10 @@ def route_pack(query: str) -> str:
         matches = [m for m in matches if m != "files"]
         if not re.search(r"\b(memoria|memory)\b", text):
             matches = [m for m in matches if m != "memory"]
+        elif not re.search(r"\b(vault|obsidian|markdown|knowledge|appunti)\b|\.md\b", text):
+            # "salva questa nota in memoria": only the generic word "nota/note"
+            # points at the vault, while the target named by the user is memory.
+            matches = [m for m in matches if m != "knowledge"]
     # A URL/page plus 'read' is an unambiguous browser read.
     if set(matches) == {"files", "browser"} and not re.search(r"\b(file|cartella)\b", text):
         return "browser"

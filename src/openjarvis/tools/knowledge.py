@@ -265,13 +265,24 @@ class NotesTool(BaseTool):
             metadata = {}
             if self.tool_id == "notes_search":
                 results, skipped = self.vault.search(params.get("query", ""))
-                content = "\n\n".join(f"{r.source}\n{r.content[:240]}" for r in results)
-                content = content or "No matching Markdown notes."
+                # Explicit labels: a 2B model otherwise mistakes excerpts for file names.
+                content = "\n".join(
+                    f"- nota: {r.source}\n  estratto: {' '.join(r.content[:240].split())}"
+                    for r in results
+                )
+                content = (
+                    f"{len(results)} note trovate:\n{content}"
+                    if results
+                    else "Nessuna nota Markdown corrisponde alla ricerca."
+                )
                 if skipped:
                     content += f"\n[{skipped} unreadable/unsupported Markdown files skipped]"
                 metadata = {"paths": [r.source for r in results], "skipped": skipped}
             elif self.tool_id == "notes_read":
-                content = self.vault.read(params.get("path", ""))
+                path = params.get("path", "")
+                text = self.vault.read(path)
+                content = f"Nota {path} letta correttamente. Contenuto:\n{text}"
+                metadata = {"path": path, "chars": len(text)}
             else:
                 size = self.vault.write(
                     params.get("path", ""),

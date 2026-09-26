@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "OpenJarvis-Lite"
-version = "0.2.0"
+version = "0.2.1"
 description = "Reduced OpenJarvis for a local 2B model on Ollama"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -22,7 +22,7 @@ jarvis = "openjarvis.cli:main"
 packages = ["src/openjarvis"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "config", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
+include = ["src", "tests", "docs", "config", "scripts", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

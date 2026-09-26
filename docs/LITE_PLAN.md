@@ -99,3 +99,22 @@ automatico. Le compatibilità API/config full non mantenute sono documentate.
 
 Installazione completa e collaudo: README e BROWSER.md. Nessun passo server
 è stato eseguito. I risultati aggiornati sono in VALIDATION.md.
+
+## Completamento 0.2.1
+
+Nessun nuovo sottosistema, dipendenza, agente o router LLM. Architettura invariata:
+router deterministico → un pack (0–5 tool) → MiniCPM → ToolExecutor.
+
+- Knowledge: `knowledge.enabled` esplicito; output dei tool notes etichettato
+  per il modello 2B. Markdown resta source of truth, indice FTS solo in RAM.
+- Routing: «nota … in memoria» → memory; vault/Obsidian/appunti + memoria → ambiguo.
+- Config: `engine.model` accettato come alternativa a `intelligence.model`.
+- Browser: stessi quattro tool; Chromium stabile/default, Obscura EXPERIMENTAL.
+  Redirect della navigazione principale validati e riaperti come nuove
+  navigazioni sorvegliate (un 3xx non arriva mai al browser); WebRTC disabilitato;
+  pagina 403 locale per navigazioni bloccate.
+- SSRF: tutto ciò che non è globale (incluso CGNAT/Tailscale, NAT64, 6to4).
+- `jarvis check` copre vault, memoria e (con `--browser`) il probe del backend.
+- Collaudo CT separato: `scripts/ct-acceptance.sh`, `scripts/live_acceptance.py`.
+
+Laya resta fuori: potrà solo passare un nome pack a `JarvisSystem.ask`.

@@ -39,7 +39,7 @@ class SystemBuilder:
                 for tool in (MemoryStoreTool(memory), MemoryRetrieveTool(memory)):
                     if tool.spec.name in config.tools.enabled:
                         tools[tool.spec.name] = tool
-            if set(config.tools.enabled).intersection(
+            if config.knowledge.enabled and set(config.tools.enabled).intersection(
                 ("notes_search", "notes_read", "notes_write", "notes_append")
             ):
                 from openjarvis.tools.knowledge import MarkdownVault, NotesTool

@@ -53,20 +53,28 @@ def _embedded_ipv4(addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
     return None
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
 def is_private_ip(ip_str: str) -> bool:
-    """Check if an IP address is private/reserved."""
+    """Check if an IP address is private/reserved (anything not globally routable)."""
     try:
         addr = ipaddress.ip_address(ip_str)
     except ValueError:
         return False
     # Normalize IPv4-mapped / IPv4-compatible IPv6 to the embedded IPv4 so
     # the IPv4 private-range CIDRs apply. Without this, e.g. ::ffff:127.0.0.1
-    # bypasses the loopback / RFC1918 checks.
+    # bypasses the loopback / RFC1918 checks. NAT64 and 6to4 prefixes also
+    # carry an IPv4 destination that a gateway may translate into the LAN.
     if isinstance(addr, ipaddress.IPv6Address):
-        embedded = _embedded_ipv4(addr)
+        embedded = _embedded_ipv4(addr) or addr.sixtofour
+        if embedded is None and addr in _NAT64:
+            embedded = ipaddress.IPv4Address(addr.packed[12:])
         if embedded is not None:
             addr = embedded
-    return any(addr in net for net in _BLOCKED_CIDR)
+    # ``is_global`` also rejects CGNAT/Tailscale (100.64/10), benchmark,
+    # documentation and reserved ranges missing from the explicit list.
+    return any(addr in net for net in _BLOCKED_CIDR) or not addr.is_global
 
 
 def check_ssrf(url: str) -> Optional[str]:

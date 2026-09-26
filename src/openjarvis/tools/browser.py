@@ -8,6 +8,36 @@ from openjarvis.core.registry import ToolRegistry
 from openjarvis.core.types import ToolResult
 from openjarvis.tools._stubs import BaseTool, ToolSpec, _BoundedToolRunner
 
+MAX_REDIRECTS = 5
+
+# WebRTC (STUN/TURN) opens UDP/TCP sockets that request interception never sees;
+# a page could reach LAN hosts with it. The Chromium flag stops non-proxied UDP,
+# the init script removes the constructors (also in iframes and popups).
+_CHROMIUM_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
+_NO_WEBRTC = """(() => {
+  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel',
+      'RTCRtpSender', 'RTCRtpReceiver', 'RTCRtpTransceiver', 'RTCIceCandidate',
+      'RTCSessionDescription']) {
+    try {
+      Object.defineProperty(globalThis, name,
+        {value: undefined, writable: false, configurable: false});
+    } catch (e) {}
+  }
+})();"""
+
+
+def _url_error(url):
+    """Return why *url* may not be requested, or None for a public HTTP(S) URL."""
+    from urllib.parse import urlsplit
+    from openjarvis.security.ssrf import check_ssrf
+
+    try:
+        if urlsplit(url).scheme not in ("http", "https"):
+            return "Only public HTTP(S) requests are allowed"
+        return check_ssrf(url)
+    except ValueError as exc:
+        return str(exc)
+
 
 class _BrowserSession:
     """One lazy, isolated context; all Playwright calls use the same worker."""
@@ -23,6 +53,7 @@ class _BrowserSession:
         self.fallback_reason = None
         self._failed = False
         self._blocked = None
+        self._redirect = None
         self._probing = False
         self._probe_seen = False
 
@@ -63,9 +94,12 @@ class _BrowserSession:
                 self.config.cdp_url, timeout=5000
             )
         else:
-            self._browser = self._playwright.chromium.launch(headless=True, timeout=10000)
+            self._browser = self._playwright.chromium.launch(
+                headless=True, timeout=10000, args=_CHROMIUM_ARGS
+            )
         # Never reuse the CDP server's default context or any personal profile.
         self._context = self._browser.new_context(service_workers="block", accept_downloads=False)
+        self._context.add_init_script(_NO_WEBRTC)
         self._context.set_default_timeout(10000)
         self._context.set_default_navigation_timeout(15000)
         self._context.route("**/*", self._guard)
@@ -85,8 +119,7 @@ class _BrowserSession:
         self.active_backend = backend
 
     def _guard(self, route):
-        from urllib.parse import urlsplit
-        from openjarvis.security.ssrf import check_ssrf
+        from urllib.parse import urljoin
 
         url = route.request.url
         if self._probing and url == "https://jarvis-interception.invalid/":
@@ -95,34 +128,78 @@ class _BrowserSession:
             return
         response = None
         try:
-            if urlsplit(url).scheme not in ("http", "https"):
-                raise ValueError("Only public HTTP(S) requests are allowed")
-            error = check_ssrf(url)
+            error = _url_error(url)
             if error:
                 raise ValueError(error)
-            # Playwright route handlers only see the first URL of an HTTP redirect.
-            # Fetch without following redirects and fail closed on any Location.
-            # This intentionally denies public redirects too; no unguarded follow-up.
             response = route.fetch(max_redirects=0, timeout=10000)
             if 300 <= response.status < 400 and "location" in response.headers:
-                raise ValueError("HTTP redirect blocked; navigate directly to its public final URL")
+                # Never hand a 3xx to the browser: Chromium follows it without
+                # calling this route again, so later hops would skip the guard.
+                target = urljoin(url, response.headers["location"])
+                error = _url_error(target)
+                if error:
+                    raise ValueError(f"HTTP redirect to blocked destination: {error}")
+                if self._is_main_navigation(route.request):
+                    # browser_navigate re-opens it as a new, guarded navigation.
+                    self._redirect = target
+                raise ValueError(f"HTTP redirect to {target} not followed")
             route.fulfill(response=response)
         except Exception as exc:
             self._blocked = str(exc)
-            route.abort()
+            try:
+                if not self._is_main_navigation(route.request):
+                    raise LookupError
+                # An aborted main-frame navigation makes Chromium commit an error
+                # page later, interrupting the next goto. Serve a local notice
+                # instead; nothing is requested from the blocked destination.
+                route.fulfill(
+                    status=403, content_type="text/plain", body=f"Blocked by Jarvis: {exc}"
+                )
+            except Exception:
+                route.abort()
         finally:
             if response is not None:
                 response.dispose()
 
+    def _is_main_navigation(self, request):
+        page = self._page
+        return (
+            page is not None
+            and request.is_navigation_request()
+            and request.frame == page.main_frame
+        )
+
     @property
     def page(self):
         self._ensure_browser()
-        self._blocked = None
+        self._blocked = self._redirect = None
         return self._page
 
     def check_requests(self):
         if self._blocked:
             raise RuntimeError(f"Browser request blocked: {self._blocked}")
+
+    def navigate(self, url, wait_until):
+        """Open *url*, following at most MAX_REDIRECTS validated main-frame hops.
+
+        Every hop is a fresh navigation through ``_guard``; a hop to a private or
+        non-HTTP(S) destination is blocked before any request is sent to it.
+        """
+        page = self.page
+        hops = []
+        for _ in range(MAX_REDIRECTS + 1):
+            self._blocked = self._redirect = None
+            try:
+                response = page.goto(url, wait_until=wait_until)
+            except Exception:
+                if self._redirect is None:
+                    raise
+            if self._redirect is None:
+                self.check_requests()
+                return response, hops
+            url = self._redirect
+            hops.append(url)
+        raise RuntimeError(f"More than {MAX_REDIRECTS} HTTP redirects")
 
     def close(self) -> None:
         try:
@@ -216,21 +293,9 @@ class BrowserNavigateTool(BaseTool):
         if wait_for not in ("load", "domcontentloaded", "networkidle"):
             wait_for = "load"
 
-        # SSRF check — never skipped. check_ssrf falls back to a pure-Python
-        # implementation when the Rust backend is unavailable, so an
-        # uncompiled extension must not silently disable SSRF protection.
-        from openjarvis.security.ssrf import check_ssrf
-
-        from urllib.parse import urlsplit
-
-        try:
-            ssrf_error = (
-                check_ssrf(url)
-                if urlsplit(url).scheme in ("http", "https")
-                else "Only public HTTP(S) URLs are allowed"
-            )
-        except ValueError as exc:
-            ssrf_error = str(exc)
+        # SSRF check before the browser starts — never skipped; the route guard
+        # repeats it for every request and redirect hop.
+        ssrf_error = _url_error(url)
         if ssrf_error:
             return ToolResult(
                 tool_name="browser_navigate",
@@ -239,9 +304,8 @@ class BrowserNavigateTool(BaseTool):
             )
 
         try:
-            page = self._session.page
-            response = page.goto(url, wait_until=wait_for)
-            self._session.check_requests()
+            response, redirects = self._session.navigate(url, wait_for)
+            page = self._session._page
             title = page.title()
             text_content = page.inner_text("body")
             if len(text_content) > 5000:
@@ -256,6 +320,7 @@ class BrowserNavigateTool(BaseTool):
                     "url": page.url,
                     "title": title,
                     "status": status,
+                    "redirects": redirects,
                     "backend": self._session.active_backend,
                     "fallback_reason": self._session.fallback_reason,
                 },
@@ -362,7 +427,16 @@ class BrowserClickTool(BaseTool):
         try:
             page = self._session.page
             strategy = self._resolve_and_click(page, selector, by_text)
-            self._session.check_requests()
+            if self._session._blocked:
+                return ToolResult(
+                    tool_name="browser_click",
+                    content=(
+                        f"Clicked element: {selector}, but a resulting request was blocked: "
+                        f"{self._session._blocked}. The click happened; do not repeat it."
+                    ),
+                    success=False,
+                    metadata={"selector": selector, "clicked": True},
+                )
             return ToolResult(
                 tool_name="browser_click",
                 content=f"Clicked element: {selector}",
@@ -563,7 +637,16 @@ class BrowserTypeTool(BaseTool):
                 page.fill(selector, text)
             else:
                 page.type(selector, text)
-            self._session.check_requests()
+            if self._session._blocked:
+                return ToolResult(
+                    tool_name="browser_type",
+                    content=(
+                        f"Typed text into: {selector}, but a resulting request was blocked: "
+                        f"{self._session._blocked}. The text was entered; do not repeat it."
+                    ),
+                    success=False,
+                    metadata={"selector": selector, "typed": True},
+                )
 
             return ToolResult(
                 tool_name="browser_type",

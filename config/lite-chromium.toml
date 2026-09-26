@@ -1,7 +1,5 @@
-# OpenJarvis Lite — CT Jarvis con browser Obscura (EXPERIMENTAL).
-# Obscura v0.2.3 NON ha superato il probe di intercettazione richieste nello
-# smoke Windows ed è NOT VERIFIED ON TARGET LINUX CT. Se il probe fallisce,
-# Jarvis rifiuta il backend: nessun bypass del guard SSRF. Vedi docs/BROWSER.md.
+# OpenJarvis Lite — CT Jarvis con browser Chromium (backend stabile, predefinito).
+# Prerequisiti: pip install ".[browser]", playwright install-deps/install chromium (README).
 
 [engine]
 host = "http://192.168.1.252:11434"
@@ -34,10 +32,6 @@ enabled = true
 db_path = "/srv/jarvis-state/memory.db"
 
 [browser]
-backend = "obscura"
-# Solo IP loopback esplicito con porta; mai esporre la porta CDP in LAN.
-cdp_url = "ws://127.0.0.1:9222"
-# "none": se Obscura fallisce, errore esplicito.
-# "chromium": ripiego SOLO all'avvio, con RuntimeWarning e backend/motivo nei metadati
-# (richiede Chromium installato come per il backend stabile).
+backend = "chromium"
+cdp_url = "ws://127.0.0.1:9222" # usato solo da obscura
 fallback = "none"

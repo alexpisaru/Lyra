@@ -110,22 +110,88 @@ def chat(config, pack):
         raise click.ClickException(str(exc)) from exc
 
 
+def _writable_dir(path):
+    import os
+    from pathlib import Path
+
+    path = Path(path).expanduser()
+    if not path.is_dir():
+        return f"directory assente: {path}"
+    if not os.access(path, os.W_OK | os.X_OK):
+        return f"directory non scrivibile: {path}"
+    return None
+
+
 @cli.command()
+@click.option(
+    "--browser",
+    "probe_browser",
+    is_flag=True,
+    help="Avvia davvero il backend browser ed esegue il probe di intercettazione.",
+)
 @click.pass_obj
-def check(config):
-    """Controlla endpoint e modello senza scaricare né generare nulla."""
+def check(config, probe_browser):
+    """Controlla Ollama, modello, vault, memoria e browser senza generare nulla."""
+    from pathlib import Path
     from openjarvis.engine.ollama import OllamaEngine
+
+    problems = []
+
+    def report(label, error, ok):
+        click.echo(f"[{'ERRORE' if error else 'OK'}] {label}: {error or ok}")
+        if error:
+            problems.append(label)
 
     engine = OllamaEngine(config.engine.host, timeout=10)
     try:
         if not engine.health():
-            raise click.ClickException(f"Ollama non raggiungibile: {config.engine.host}")
-        if config.intelligence.model not in engine.list_models():
-            raise click.ClickException(f"Modello non presente: {config.intelligence.model}")
-        click.echo(f"Ollama OK; modello presente: {config.intelligence.model}")
-        click.echo("Compatibilità tool da verificare con una richiesta reale (README).")
+            report("ollama", f"non raggiungibile: {config.engine.host}", "")
+        else:
+            model = config.intelligence.model
+            missing = None if model in engine.list_models() else f"modello assente: {model}"
+            report("ollama", missing, f"{config.engine.host}, modello {model}")
     finally:
         engine.close()
+
+    if config.memory.enabled:
+        db = Path(config.memory.db_path).expanduser()
+        report("memory", _writable_dir(db.parent), str(db))
+    else:
+        click.echo("[--] memory: disattivata")
+    if config.knowledge.enabled:
+        report("knowledge", _writable_dir(config.knowledge.vault_path), config.knowledge.vault_path)
+    else:
+        click.echo("[--] knowledge: disattivato")
+
+    if not config.tools.browser:
+        click.echo("[--] browser: disattivato")
+    else:
+        backend = config.browser.backend
+        label = "EXPERIMENTAL" if backend == "obscura" else "stabile"
+        click.echo(f"[..] browser: backend {backend} ({label}), fallback {config.browser.fallback}")
+        if probe_browser:
+            from openjarvis.tools.browser import _BrowserSession
+
+            session = _BrowserSession(config.browser)
+            try:
+                future = session.runner.submit(session._ensure_browser)
+                error = None
+                try:
+                    future.result(timeout=60)
+                except Exception as exc:
+                    error = f"avvio/probe falliti: {exc}"
+                ok = f"{session.active_backend} attivo, intercettazione verificata"
+                if session.fallback_reason:
+                    ok += f" (FALLBACK da obscura: {session.fallback_reason})"
+                report("browser", error, ok)
+            finally:
+                session.close()
+        else:
+            click.echo("     usare 'check --browser' per il probe reale del backend")
+
+    click.echo("Compatibilità tool del modello da verificare con richieste reali (README).")
+    if problems:
+        raise click.ClickException("controlli falliti: " + ", ".join(problems))
 
 
 def main():

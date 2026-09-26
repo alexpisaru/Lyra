@@ -46,11 +46,17 @@ def test_backend_is_explicit_lazy_isolated_and_guarded(playwright, backend):
             )
             assert not playwright.chromium.launch.called
         else:
-            playwright.chromium.launch.assert_called_once_with(headless=True, timeout=10000)
+            playwright.chromium.launch.assert_called_once_with(
+                headless=True,
+                timeout=10000,
+                args=["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+            )
             assert not playwright.chromium.connect_over_cdp.called
         session._browser.new_context.assert_called_once_with(
             service_workers="block", accept_downloads=False
         )
+        # WebRTC removal applies to both backends.
+        assert "RTCPeerConnection" in session._context.add_init_script.call_args.args[0]
         assert session._context.route.called and session._context.route_web_socket.called
         context = session._context
         session._ensure_browser()
@@ -125,22 +131,100 @@ def test_private_requests_block_before_network(url, backend):
         session.close()
 
 
-@pytest.mark.parametrize("location", ["http://127.0.0.1:11434", "https://example.org/final"])
-def test_redirect_never_followed(monkeypatch, location):
-    monkeypatch.setattr("openjarvis.security.ssrf.check_ssrf", lambda url: None)
-    session = _BrowserSession()
+def _redirect_route(session, location, *, main_frame):
     route = MagicMock()
     route.request.url = "https://example.com/redirect"
+    route.request.is_navigation_request.return_value = main_frame
+    session._page = MagicMock()
+    route.request.frame = session._page.main_frame if main_frame else MagicMock()
     response = route.fetch.return_value
     response.status = 302
     response.headers = {"location": location}
+    return route, response
+
+
+def _assert_not_forwarded(route, *, main_frame):
+    """The upstream 3xx never reaches the browser; only a local notice or an abort."""
+    for call_ in route.fulfill.call_args_list:
+        assert "response" not in call_.kwargs and call_.kwargs["status"] == 403
+    if main_frame:
+        route.fulfill.assert_called_once()
+        assert not route.abort.called
+    else:
+        route.abort.assert_called_once()
+        assert not route.fulfill.called
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["http://127.0.0.1:11434", "http://[::1]/", "file:///etc/passwd", "http://169.254.169.254/"],
+)
+@pytest.mark.parametrize("main_frame", [True, False])
+def test_redirect_to_private_is_blocked_and_never_recorded(monkeypatch, location, main_frame):
+    import openjarvis.security.ssrf as ssrf
+
+    original = ssrf.check_ssrf
+    monkeypatch.setattr(
+        ssrf, "check_ssrf", lambda url: None if "example.com" in url else original(url)
+    )
+    session = _BrowserSession()
+    route, response = _redirect_route(session, location, main_frame=main_frame)
     try:
         session._guard(route)
         route.fetch.assert_called_once_with(max_redirects=0, timeout=10000)
-        route.abort.assert_called_once()
-        assert not route.fulfill.called
+        _assert_not_forwarded(route, main_frame=main_frame)
         response.dispose.assert_called_once()
+        assert "blocked destination" in session._blocked
+        assert session._redirect is None
+    finally:
+        session._page = None
+        session.close()
+
+
+@pytest.mark.parametrize("main_frame", [True, False])
+def test_public_redirect_is_aborted_and_only_main_frame_is_recorded(monkeypatch, main_frame):
+    monkeypatch.setattr("openjarvis.security.ssrf.check_ssrf", lambda url: None)
+    session = _BrowserSession()
+    route, _ = _redirect_route(session, "/final", main_frame=main_frame)
+    try:
+        session._guard(route)
+        _assert_not_forwarded(route, main_frame=main_frame)
         assert "redirect" in session._blocked
+        assert session._redirect == ("https://example.com/final" if main_frame else None)
+    finally:
+        session._page = None
+        session.close()
+
+
+def test_navigate_follows_recorded_hops_as_new_guarded_navigations(playwright, monkeypatch):
+    monkeypatch.setattr("openjarvis.security.ssrf.check_ssrf", lambda url: None)
+    session = _BrowserSession(BrowserConfig(backend="chromium"))
+    try:
+        session._ensure_browser()
+        chain = {"https://a.example/": "https://b.example/", "https://b.example/": None}
+        visited = []
+
+        def goto(url, **kwargs):
+            visited.append(url)
+            if chain[url]:
+                session._redirect = chain[url]
+                raise RuntimeError("net::ERR_FAILED")
+            return MagicMock(status=200)
+
+        session._page.goto.side_effect = goto
+        session._page.inner_text.return_value = "final"
+        result = BrowserNavigateTool(session).execute(url="https://a.example/")
+        assert result.success, result.content
+        assert visited == ["https://a.example/", "https://b.example/"]
+        assert result.metadata["redirects"] == ["https://b.example/"]
+
+        def endless(url, **kwargs):
+            session._redirect = url + "x"
+            raise RuntimeError("net::ERR_FAILED")
+
+        session._page.goto.side_effect = endless
+        result = BrowserNavigateTool(session).execute(url="https://loop.example/")
+        assert not result.success and "More than 5 HTTP redirects" in result.content
     finally:
         session.close()
 

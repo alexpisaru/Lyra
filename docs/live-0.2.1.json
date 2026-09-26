@@ -1,0 +1,454 @@
+{
+  "date": "2026-09-27",
+  "runtime": "Windows 11 PC, Python 3.12, OpenJarvis Lite 0.2.1 working tree (NOT the Linux CT)",
+  "ollama": "http://192.168.1.252:11434 (remote CT), model openbmb/minicpm5-2b:q8_0",
+  "linux_ct_runtime_verified": false,
+  "grading": "ok = expected tool succeeded and expected text present in tool output/answer. Prose is NOT graded: read 'answer'.",
+  "runs": [
+    {
+      "name": "run1 ad-hoc, before labelled notes output",
+      "results": [
+        {
+          "label": "write",
+          "query": "Usa notes_write per creare collaudo.md con il testo ORCHIDEA-742",
+          "pack_requested": null,
+          "seconds": 50.67,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_write",
+              true
+            ]
+          ],
+          "answer": "collaudo.md è stato creato con il testo `ORCHIDEA-742`.",
+          "flags": {}
+        },
+        {
+          "label": "file_on_disk",
+          "ok": true,
+          "content": "ORCHIDEA-742"
+        },
+        {
+          "label": "search_auto_route",
+          "query": "Cerca ORCHIDEA nelle mie note",
+          "pack_requested": null,
+          "seconds": 35.08,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_search",
+              true
+            ],
+            [
+              "notes_read",
+              true
+            ],
+            [
+              "notes_read",
+              false
+            ]
+          ],
+          "answer": "Il file corretto dovrebbe essere `ORCHIDEA-742.md`, ma poiché non è disponibile un risultato alternativo, posso dirti che il tool ha tentato di read su `ORCHIDEA-742` senza estensione `.md`. Potrebbe essere necessario verificare il nome esatto del file.",
+          "flags": {}
+        },
+        {
+          "label": "search_after_external_edit",
+          "query": "Cerca GIRASOLE nelle note",
+          "pack_requested": null,
+          "seconds": 21.37,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_search",
+              true
+            ],
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "answer": "Non ho trovato informazioni specifiche su \"GIRASOLE\" oltre al semplice menzione in `collaudo.md`: *\"GIRASOLE-913 modificato fuori da Jarvis\"*. Non sembra esserci un note dedicato a GIRASOLE.",
+          "flags": {}
+        },
+        {
+          "label": "read",
+          "query": "Leggi la nota collaudo.md",
+          "pack_requested": null,
+          "seconds": 14.05,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "answer": "Non ho ricevuto alcun dettagli specifici su cosa accaduto con la modifica di `collaudo.md`. Potrebbe essere utile fornire un aggiornamento o una richiesta di verifica.",
+          "flags": {}
+        },
+        {
+          "label": "memory_store",
+          "query": "Memorizza nella memoria: il mio colore preferito è verde smeraldo",
+          "pack_requested": null,
+          "seconds": 29.95,
+          "ok": true,
+          "pack": "memory",
+          "tools_offered": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "tool_calls": [
+            [
+              "memory_store",
+              true
+            ]
+          ],
+          "answer": "Tutto fatto — il tuo colore preferito (verde smeraldo) è stato memorizzato a fondo. 🌿",
+          "flags": {}
+        },
+        {
+          "label": "vault_untouched_by_memory",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "run2 scripts/live_acceptance.py --browser, before labelled notes output",
+      "results": [
+        {
+          "label": "notes_write",
+          "query": "Usa notes_write per creare jarvis-collaudo.md con il testo ORCHIDEA-742",
+          "seconds": 12.39,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_write",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Creato `jarvis-collaudo.md` con il testo `ORCHIDEA-742`."
+        },
+        {
+          "label": "file_on_disk",
+          "ok": true
+        },
+        {
+          "label": "notes_search",
+          "query": "Cerca ORCHIDEA nelle mie note",
+          "seconds": 27.12,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_search",
+              true
+            ],
+            [
+              "notes_read",
+              true
+            ],
+            [
+              "notes_read",
+              false
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Il file `ORCHIDEA-742` non è in formato `.md` — ha un'estensione diversa, quindi non posso accederervi direttamente. Posso cercare altre note con diverse parole chiave o leggere un file .md specifico tuo se lo nomi."
+        },
+        {
+          "label": "search_after_external_edit",
+          "query": "Cerca GIRASOLE nelle note",
+          "seconds": 21.78,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_search",
+              true
+            ],
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Non ci sono note specifiche su \"GIRASOLE\" oltre al riferimento presente in `jarvis-collaudo.md`:  \n> GIRASOLE-913 modificato fuori da Jarvis  \n\nNon è stato trovato alcun contenuto aggiuntivo."
+        },
+        {
+          "label": "notes_read",
+          "query": "Leggi la nota jarvis-collaudo.md",
+          "seconds": 12.34,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Non ho trovato una nota con il nome esatto `jarvis-collaudo.md`. Potrebbe essere che il nome sia diverso o non esista."
+        },
+        {
+          "label": "memory_store",
+          "query": "Memorizza nella memoria: il mio colore preferito è verde smeraldo",
+          "seconds": 11.0,
+          "ok": true,
+          "pack": "memory",
+          "tools_offered": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "tool_calls": [
+            [
+              "memory_store",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Tutto fatto — hai memorizzato che il tuo colore preferito è **verde smeraldo**. 🌿"
+        },
+        {
+          "label": "memory_does_not_touch_vault",
+          "ok": true
+        },
+        {
+          "label": "memory_retrieve",
+          "query": "Cerca nella memoria il mio colore preferito",
+          "seconds": 9.28,
+          "ok": true,
+          "pack": "memory",
+          "tools_offered": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "tool_calls": [
+            [
+              "memory_retrieve",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Il tuo colore preferito è **verde smeraldo**. 🌿"
+        },
+        {
+          "label": "browser_navigate",
+          "query": "Apri https://example.com e dimmi il titolo della pagina",
+          "seconds": 8.77,
+          "ok": true,
+          "pack": "browser",
+          "tools_offered": [
+            "browser_navigate",
+            "browser_click",
+            "browser_type",
+            "browser_extract"
+          ],
+          "tool_calls": [
+            [
+              "browser_navigate",
+              true
+            ]
+          ],
+          "browser_backend": "chromium",
+          "answer": "Il titolo della pagina è **Example Domain**."
+        }
+      ]
+    },
+    {
+      "name": "run3 scripts/live_acceptance.py, after labelled notes output",
+      "results": [
+        {
+          "label": "notes_write",
+          "query": "Usa notes_write per creare jarvis-collaudo.md con il testo ORCHIDEA-742",
+          "seconds": 12.45,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_write",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Creato `jarvis-collaudo.md` con il contenuto `ORCHIDEA-742`."
+        },
+        {
+          "label": "file_on_disk",
+          "ok": true
+        },
+        {
+          "label": "notes_search",
+          "query": "Cerca ORCHIDEA nelle mie note",
+          "seconds": 19.05,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_search",
+              true
+            ],
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "La nota `jarvis-collaudo.md` contiene solo il testo **ORCHIDEA-742**. Non c'è altro contesto o spiegazione aggiuntiva."
+        },
+        {
+          "label": "search_after_external_edit",
+          "query": "Cerca GIRASOLE nelle note",
+          "seconds": 24.83,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_search",
+              true
+            ],
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Non ho trovato informazioni specifiche su \"GIRASOLE\" oltre al titolo della nota rilevato. La nota `jarvis-collaudo.md` sembra essere un collegamento a un collaudo (GIRASOLE-913), ma non contiene dettagli aggiuntivi su cosa sia \"GIRASOLE\"."
+        },
+        {
+          "label": "notes_read",
+          "query": "Leggi la nota jarvis-collaudo.md",
+          "seconds": 11.5,
+          "ok": true,
+          "pack": "knowledge",
+          "tools_offered": [
+            "notes_search",
+            "notes_read",
+            "notes_write",
+            "notes_append"
+          ],
+          "tool_calls": [
+            [
+              "notes_read",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Nota letta. Il contenuto è:\n\n# Collaudo\nGIRASOLE-913 modificato fuori da Jarvis"
+        },
+        {
+          "label": "memory_store",
+          "query": "Memorizza nella memoria: il mio colore preferito è verde smeraldo",
+          "seconds": 9.61,
+          "ok": true,
+          "pack": "memory",
+          "tools_offered": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "tool_calls": [
+            [
+              "memory_store",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Tutto registrato, Jarvis. 🎨"
+        },
+        {
+          "label": "memory_does_not_touch_vault",
+          "ok": true
+        },
+        {
+          "label": "memory_retrieve",
+          "query": "Cerca nella memoria il mio colore preferito",
+          "seconds": 9.23,
+          "ok": true,
+          "pack": "memory",
+          "tools_offered": [
+            "memory_store",
+            "memory_retrieve"
+          ],
+          "tool_calls": [
+            [
+              "memory_retrieve",
+              true
+            ]
+          ],
+          "browser_backend": null,
+          "answer": "Il tuo colore preferito è **verde smeraldo**. 🌊"
+        }
+      ]
+    }
+  ]
+}

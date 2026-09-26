@@ -30,10 +30,12 @@ def test_read_write_append_search_and_persistence(vault):
     assert run(vault, "notes_write", path="progetti/Petalo.md", content="# Petalo\nCaffè").success
     assert run(vault, "notes_append", path="progetti/Petalo.md", content="\nOrchidea-742").success
     result = run(vault, "notes_read", path="progetti/Petalo.md")
-    assert result.content == "# Petalo\nCaffè\nOrchidea-742"
-    assert (vault.root / "progetti/Petalo.md").read_text(encoding="utf-8") == result.content
+    text = "# Petalo\nCaffè\nOrchidea-742"
+    assert result.content == f"Nota progetti/Petalo.md letta correttamente. Contenuto:\n{text}"
+    assert (vault.root / "progetti/Petalo.md").read_text(encoding="utf-8") == text
     result = run(vault, "notes_search", query="Orchidea")
     assert result.success and result.metadata["paths"] == ["progetti/Petalo.md"]
+    assert "- nota: progetti/Petalo.md\n  estratto: # Petalo Caffè Orchidea-742" in result.content
     root = vault.root
     vault.close()
     reopened = MarkdownVault(root)
@@ -198,6 +200,7 @@ def test_entry_limit_invalidates_index(vault, monkeypatch):
 
 def test_pack_wiring_and_separate_memory(tmp_path):
     cfg = JarvisConfig()
+    cfg.knowledge.enabled = True
     cfg.knowledge.vault_path = str(tmp_path / "vault")
     cfg.memory.db_path = str(tmp_path / "memory.db")
     cfg.tools.workspace = str(tmp_path / "workspace")
@@ -254,6 +257,70 @@ def test_mixed_capabilities_and_config(tmp_path):
     with pytest.raises(ValueError, match="vault_path"):
         cfg.validate()
     cfg.knowledge.vault_path = str(tmp_path / "vault")
+    # A path alone does not enable the vault: the switch must be explicit.
+    with pytest.raises(ValueError, match="knowledge.enabled"):
+        cfg.validate()
+    cfg.knowledge.enabled = True
     cfg.memory.db_path = str(tmp_path / "vault/memory.db")
     with pytest.raises(ValueError, match="outside"):
         cfg.validate()
+    cfg.knowledge.vault_path = ""
+    cfg.tools.enabled = []
+    with pytest.raises(ValueError, match="requires knowledge.vault_path"):
+        cfg.validate()
+
+
+@pytest.mark.parametrize(
+    ("query", "pack"),
+    [
+        ("Salva questa nota in memoria", "memory"),
+        ("Ricordami che il meeting è alle 10", "memory"),
+        ("Cosa ricordi di me?", "memory"),
+        ("Prendi nota: comprare il latte", "knowledge"),
+        ("Aggiungi agli appunti la lista spesa", "knowledge"),
+        ("Cerca nelle note Petalo", "knowledge"),
+    ],
+)
+def test_memory_vs_knowledge_routing(query, pack):
+    assert route_pack(query) == pack
+
+
+def test_vault_specific_words_with_memory_stay_ambiguous():
+    for query in ("Copia gli appunti di Obsidian in memoria", "Salva vault.md in memoria"):
+        with pytest.raises(ValueError, match="capability"):
+            route_pack(query)
+
+
+@pytest.mark.parametrize(
+    ("name", "backend"),
+    [("lite.toml", "chromium"), ("lite-chromium.toml", "chromium"), ("lite-obscura.toml", "obscura")],
+)
+def test_ct_config_files_validate_and_use_separate_state(tmp_path, name, backend):
+    import tomllib
+    from pathlib import Path
+
+    from openjarvis.core.config import _overlay
+
+    cfg = JarvisConfig()
+    with (Path(__file__).resolve().parents[1] / "config" / name).open("rb") as handle:
+        _overlay(cfg, tomllib.load(handle))
+    assert cfg.engine.host == "http://192.168.1.252:11434"
+    assert cfg.knowledge.enabled and cfg.knowledge.vault_path == "/srv/jarvis-vault"
+    assert cfg.memory.db_path == "/srv/jarvis-state/memory.db"
+    assert set(PACKS["knowledge"]) <= set(cfg.tools.enabled)
+    assert cfg.browser.backend == backend and cfg.browser.fallback == "none"
+    if os.name != "posix":
+        # "/srv/..." is not absolute on Windows; validate the same shape elsewhere.
+        cfg.knowledge.vault_path = str(tmp_path / "vault")
+        cfg.memory.db_path = str(tmp_path / "state/memory.db")
+    cfg.validate()
+    assert cfg.intelligence.model == "openbmb/minicpm5-2b:q8_0"
+
+
+def test_engine_model_alias(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[engine]\nmodel = "custom:q8"')
+    assert load_config(path).intelligence.model == "custom:q8"
+    path.write_text('[engine]\nmodel = "custom:q8"\n[intelligence]\nmodel = "other"')
+    with pytest.raises(ValueError, match="disagree"):
+        load_config(path)
