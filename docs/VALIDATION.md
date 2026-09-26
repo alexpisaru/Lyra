@@ -1,3 +1,29 @@
+# Rename a Lyra — 27 settembre 2026
+
+Solo identità pubblica e operativa: comportamento, routing, pack, sicurezza,
+browser, memoria e knowledge invariati. Nuovi nomi: prodotto **Lyra**, runtime
+**Lyra Core**, comando `lyra` (alias `jarvis` deprecated), pacchetto `lyra-core`,
+utente `lyra`, path `/opt/lyra` e `/srv/lyra-{vault,state,workspace}`. Il package
+Python resta `openjarvis`. Le sezioni sotto sono storiche e usano i nomi di allora
+(`jarvis`, `/opt/jarvis-lite`, «Blocked by Jarvis»).
+
+| Verifica dopo il rename (Windows 11, Python 3.12) | Esito |
+|---|---|
+| `python -m pytest -q -rs` | **264 passed, 6 skipped, 0 failed** (stessi 6 skip di prima) |
+| Smoke Chromium reale | **1 passed** |
+| `python -m ruff check src tests scripts` | All checks passed |
+| `bash -n scripts/ct-acceptance.sh` | ok |
+| `python -m build` | `lyra_core-0.2.1.tar.gz` e `lyra_core-0.2.1-py3-none-any.whl` |
+| Wheel in venv pulito: `lyra --help`, `jarvis --help` (legacy), `__version__` | ok, 0.2.1 |
+| Parsing di `lite.toml`, `lite-chromium.toml`, `lite-obscura.toml` | path `/srv/lyra-*`, Ollama/modello invariati |
+| `lyra --config <copia di lite.toml con dir temporanee> check` | exit 0 (Ollama e modello presenti) |
+| Qualunque cosa sul CT Linux | **NOT VERIFIED ON TARGET LINUX CT** |
+
+Unico cambiamento visibile al modello: il prompt di sistema dice «Sei Lyra» invece
+di «Sei Jarvis». Nessun nuovo test MiniCPM eseguito dopo il rename.
+
+---
+
 # Validazione 0.2.1 — 27 settembre 2026
 
 Verifica e completamento del fork 0.2 trovato nella cartella (nessuna riscrittura,

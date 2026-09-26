@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Collaudo sul CT Jarvis (Linux). NON installa nulla: usa il venv già creato.
-# Uso (come utente jarvis, dalla directory del sorgente):
+# Collaudo sul CT Lyra (Linux). NON installa nulla: usa il venv già creato.
+# Uso (come utente lyra, dalla directory del sorgente):
 #   scripts/ct-acceptance.sh                  # suite + check + modello reale (vault temporaneo)
 #   BROWSER=chromium CONFIG=<config con tools.browser=true> scripts/ct-acceptance.sh
 #   BROWSER=obscura CONFIG=config/lite-obscura.toml scripts/ct-acceptance.sh  # CDP già avviato
@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 CONFIG="${CONFIG:-config/lite.toml}"
 VENV="${VENV:-.venv}"
 PY="$VENV/bin/python"
-JARVIS="$VENV/bin/jarvis"
+LYRA="$VENV/bin/lyra"
 OUT="${OUT:-acceptance-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT"
 failed=0
@@ -36,12 +36,12 @@ step() {
 
 # Suite completa: su Linux girano anche i test symlink/hardlink/FIFO saltati su Windows.
 step unit-tests "$PY" -m pytest -q -rs -p no:cacheprovider
-step jarvis-check "$JARVIS" --config "$CONFIG" check
+step lyra-check "$LYRA" --config "$CONFIG" check
 
 probe_browser() {
   # PASS only if the configured backend really started and interception was proven.
   local out
-  out="$("$JARVIS" --config "$CONFIG" check --browser 2>&1)"; local rc=$?
+  out="$("$LYRA" --config "$CONFIG" check --browser 2>&1)"; local rc=$?
   echo "$out"
   [ "$rc" = 0 ] && grep -q "\[OK\] browser: $BROWSER attivo, intercettazione verificata" <<<"$out" \
     && ! grep -q "FALLBACK" <<<"$out"

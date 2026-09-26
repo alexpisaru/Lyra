@@ -1,7 +1,7 @@
-# OpenJarvis Lite — CT Jarvis con browser Obscura (EXPERIMENTAL).
+# Lyra — CT Lyra con browser Obscura (EXPERIMENTAL).
 # Obscura v0.2.3 NON ha superato il probe di intercettazione richieste nello
 # smoke Windows ed è NOT VERIFIED ON TARGET LINUX CT. Se il probe fallisce,
-# Jarvis rifiuta il backend: nessun bypass del guard SSRF. Vedi docs/BROWSER.md.
+# Lyra rifiuta il backend: nessun bypass del guard SSRF. Vedi docs/BROWSER.md.
 
 [engine]
 host = "http://192.168.1.252:11434"
@@ -21,17 +21,17 @@ max_prompt_bytes = 12000
 history_chars = 2000
 
 [tools]
-workspace = "/srv/jarvis-workspace"
+workspace = "/srv/lyra-workspace"
 enabled = ["calculator", "file_read", "memory_store", "memory_retrieve", "notes_search", "notes_read", "notes_write", "notes_append", "browser_navigate", "browser_click", "browser_type", "browser_extract"]
 browser = true
 
 [knowledge]
 enabled = true
-vault_path = "/srv/jarvis-vault"
+vault_path = "/srv/lyra-vault"
 
 [memory]
 enabled = true
-db_path = "/srv/jarvis-state/memory.db"
+db_path = "/srv/lyra-state/memory.db"
 
 [browser]
 backend = "obscura"

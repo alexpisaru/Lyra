@@ -3,9 +3,9 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "OpenJarvis-Lite"
+name = "lyra-core"
 version = "0.2.1"
-description = "Reduced OpenJarvis for a local 2B model on Ollama"
+description = "Lyra Core: local assistant runtime, a reduced fork of OpenJarvis, for a 2B model on Ollama"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = {text = "Apache-2.0"}
@@ -16,6 +16,8 @@ browser = ["playwright>=1.48,<2"]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.22", "ruff>=0.4", "build>=1"]
 
 [project.scripts]
+lyra = "openjarvis.cli:main"
+# Deprecated legacy alias, kept temporarily; use `lyra`.
 jarvis = "openjarvis.cli:main"
 
 [tool.hatch.build.targets.wheel]

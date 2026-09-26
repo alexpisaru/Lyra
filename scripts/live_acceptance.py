@@ -4,7 +4,7 @@ Usage:  python scripts/live_acceptance.py --config config/lite.toml [--real-dirs
             [--out live-acceptance.json]
 
 By default vault and memory go to a temporary directory, so the real vault is not
-touched; --real-dirs uses the configured paths (and leaves jarvis-collaudo.md there).
+touched; --real-dirs uses the configured paths (and leaves lyra-collaudo.md there).
 Every outcome is recorded, pass or fail. "ok" means: the expected tool ran
 successfully and the expected text is in the tool output or answer. It does NOT
 grade the model's prose; read the "answer" fields. Exit code 1 if any check fails.
@@ -22,7 +22,7 @@ from pathlib import Path
 from openjarvis.core.config import load_config
 from openjarvis.system import SystemBuilder
 
-NOTE = "jarvis-collaudo.md"
+NOTE = "lyra-collaudo.md"
 
 
 def main():
@@ -36,7 +36,7 @@ def main():
     cfg = load_config(args.config)
     tmp = None
     if not args.real_dirs:
-        tmp = tempfile.TemporaryDirectory(prefix="jarvis-acceptance-")
+        tmp = tempfile.TemporaryDirectory(prefix="lyra-acceptance-")
         cfg.knowledge.enabled = True
         cfg.knowledge.vault_path = str(Path(tmp.name) / "vault")
         cfg.memory.db_path = str(Path(tmp.name) / "state" / "memory.db")
@@ -83,7 +83,7 @@ def main():
     record({"label": "file_on_disk", "ok": "ORCHIDEA-742" in text, "path": str(path)})
     ask("notes_search", "Cerca ORCHIDEA nelle mie note", "notes_search", NOTE)
     # External edit, exactly as Obsidian or any editor would do it.
-    path.write_text("# Collaudo\nGIRASOLE-913 modificato fuori da Jarvis\n", encoding="utf-8")
+    path.write_text("# Collaudo\nGIRASOLE-913 modificato fuori da Lyra\n", encoding="utf-8")
     ask("search_after_external_edit", "Cerca GIRASOLE nelle note", "notes_search", "GIRASOLE-913")
     ask("notes_read", f"Leggi la nota {NOTE}", "notes_read", "GIRASOLE-913")
     before = sorted(p.relative_to(vault).as_posix() for p in vault.rglob("*.md"))

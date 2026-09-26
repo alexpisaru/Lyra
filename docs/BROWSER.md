@@ -30,20 +30,20 @@ server richiedesse un token la connessione fallisce in modo esplicito.
 
 Smoke del 26/09/2026 (sessione precedente), Obscura v0.2.3 Windows +
 Playwright 1.63.0: la connessione CDP riesce, ma il probe di intercettazione
-fallisce. All'avvio Jarvis naviga verso `https://jarvis-interception.invalid/`
+fallisce. All'avvio Lyra naviga verso `https://jarvis-interception.invalid/`
 e si aspetta che la route del contesto risponda con un contenuto sintetico;
 Obscura invece tenta il fetch di rete (errore; con un hostname pubblico: timeout
 di 5 s). Stesso esito con route sulla pagina. Causa interna non diagnosticata.
 
 Conseguenza: con Obscura il guard SSRF non potrebbe vedere le richieste, quindi
-**Jarvis rifiuta il backend**. Il probe esiste proprio per questo e non va
+**Lyra rifiuta il backend**. Il probe esiste proprio per questo e non va
 disattivato. In questa sessione il binario Obscura non è stato rieseguito;
 l'esito Windows sopra non è generalizzato a Linux. Promuovere Obscura solo se
 `check --browser` e lo smoke qui sotto passano sul CT.
 
 ## Installazione Obscura su Linux x86_64 (opzionale, sperimentale)
 
-Nessun comando è stato eseguito sul server. Come root nel CT Jarvis:
+Nessun comando è stato eseguito sul server. Come root nel CT Lyra:
 
 ```bash
 uname -m                      # x86_64
@@ -63,26 +63,26 @@ Archivio con rendering, senza stealth; tenere insieme `obscura` e
 `obscura-worker`. Non servono Rust, Node o Docker. Il client Playwright:
 
 ```bash
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[browser]'
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[browser]'
 ```
 
 Avvio manuale per il collaudo (terminale separato):
 
 ```bash
-runuser -u jarvis -- env OBSCURA_ALLOW_PRIVATE_NETWORK=0 OBSCURA_NAV_TIMEOUT_MS=15000 OBSCURA_CDP_COMMAND_TIMEOUT_MS=20000 OBSCURA_FETCH_TIMEOUT_MS=10000 /opt/obscura-0.2.3/obscura serve --host 127.0.0.1 --port 9222
+runuser -u lyra -- env OBSCURA_ALLOW_PRIVATE_NETWORK=0 OBSCURA_NAV_TIMEOUT_MS=15000 OBSCURA_CDP_COMMAND_TIMEOUT_MS=20000 OBSCURA_FETCH_TIMEOUT_MS=10000 /opt/obscura-0.2.3/obscura serve --host 127.0.0.1 --port 9222
 ```
 
 Solo loopback: mai esporre 9222 alla LAN, mai `--allow-private-network`.
 Per l'avvio persistente, **dopo** un collaudo positivo:
 
 ```bash
-cp /opt/jarvis-lite/config/obscura.service /etc/systemd/system/obscura.service
+cp /opt/lyra/config/obscura.service /etc/systemd/system/obscura.service
 systemctl daemon-reload
 systemctl enable --now obscura
 systemctl status obscura
 ```
 
-`config/obscura.service` è una ricetta di questo fork (utente `jarvis`,
+`config/obscura.service` è una ricetta di questo fork (utente `lyra`,
 `ProtectSystem=strict`, `NoNewPrivileges`), non un'unità upstream, e non è
 stata provata nel CT. Non usarla insieme al comando manuale sulla stessa porta.
 
@@ -109,12 +109,12 @@ fallback = "none"
 
 ```bash
 # Probe del backend configurato (avvia davvero il browser):
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite-obscura.toml check --browser
-# Contratto completo (serve l'extra dev; la directory sorgente deve essere dell'utente jarvis):
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[dev,browser]'
-cd /opt/jarvis-lite
-runuser -u jarvis -- env JARVIS_BROWSER_SMOKE=obscura JARVIS_CDP_URL=ws://127.0.0.1:9222 .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
-runuser -u jarvis -- env JARVIS_BROWSER_SMOKE=chromium .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
+runuser -u lyra -- /opt/lyra/.venv/bin/lyra --config /opt/lyra/config/lite-obscura.toml check --browser
+# Contratto completo (serve l'extra dev; la directory sorgente deve essere dell'utente lyra):
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev,browser]'
+cd /opt/lyra
+runuser -u lyra -- env JARVIS_BROWSER_SMOKE=obscura JARVIS_CDP_URL=ws://127.0.0.1:9222 .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
+runuser -u lyra -- env JARVIS_BROWSER_SMOKE=chromium .venv/bin/python -m pytest -q -rs tests/test_browser_smoke.py
 ```
 
 Oppure `BROWSER=obscura bash scripts/ct-acceptance.sh`. Lo smoke non chiama
@@ -141,7 +141,7 @@ non è un successo.
 - Redirect della navigazione principale in `browser_navigate`: `Location`
   risolto, validato e riaperto come nuova navigazione sorvegliata, massimo 5
   salti; metadati `redirects`. Una navigazione principale bloccata riceve una
-  pagina locale 403 «Blocked by Jarvis» (nessuna richiesta alla destinazione)
+  pagina locale 403 «Blocked by Lyra» (nessuna richiesta alla destinazione)
   invece di un abort, che in Chromium lascerebbe una pagina d'errore capace di
   interrompere la navigazione successiva.
 - WebRTC: `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` (Chromium)
@@ -153,5 +153,5 @@ non è un successo.
   azioni 10 s, navigazione 15 s, fetch 10 s, tool 30 s.
 - Non è una sandbox di rete: nessun pinning DNS (DNS rebinding tra controllo e
   fetch), risoluzioni DNS/preconnect non sorvegliate. Per isolamento forte usare
-  il firewall Proxmox sul CT Jarvis (egress: DNS, Internet pubblico,
+  il firewall Proxmox sul CT Lyra (egress: DNS, Internet pubblico,
   192.168.1.252:11434; niente altra LAN).

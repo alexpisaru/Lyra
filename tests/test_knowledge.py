@@ -305,8 +305,8 @@ def test_ct_config_files_validate_and_use_separate_state(tmp_path, name, backend
     with (Path(__file__).resolve().parents[1] / "config" / name).open("rb") as handle:
         _overlay(cfg, tomllib.load(handle))
     assert cfg.engine.host == "http://192.168.1.252:11434"
-    assert cfg.knowledge.enabled and cfg.knowledge.vault_path == "/srv/jarvis-vault"
-    assert cfg.memory.db_path == "/srv/jarvis-state/memory.db"
+    assert cfg.knowledge.enabled and cfg.knowledge.vault_path == "/srv/lyra-vault"
+    assert cfg.memory.db_path == "/srv/lyra-state/memory.db"
     assert set(PACKS["knowledge"]) <= set(cfg.tools.enabled)
     assert cfg.browser.backend == backend and cfg.browser.fallback == "none"
     if os.name != "posix":

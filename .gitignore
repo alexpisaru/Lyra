@@ -132,6 +132,6 @@ minion_logs/
 *.oj-debug.json
 oj-debug.*.json
 
-# OpenJarvis Lite acceptance output
+# Lyra acceptance output
 acceptance-*/
 live-acceptance.json

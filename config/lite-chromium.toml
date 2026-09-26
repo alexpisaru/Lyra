@@ -1,4 +1,4 @@
-# OpenJarvis Lite — CT Jarvis con browser Chromium (backend stabile, predefinito).
+# Lyra — CT Lyra con browser Chromium (backend stabile, predefinito).
 # Prerequisiti: pip install ".[browser]", playwright install-deps/install chromium (README).
 
 [engine]
@@ -19,17 +19,17 @@ max_prompt_bytes = 12000
 history_chars = 2000
 
 [tools]
-workspace = "/srv/jarvis-workspace"
+workspace = "/srv/lyra-workspace"
 enabled = ["calculator", "file_read", "memory_store", "memory_retrieve", "notes_search", "notes_read", "notes_write", "notes_append", "browser_navigate", "browser_click", "browser_type", "browser_extract"]
 browser = true
 
 [knowledge]
 enabled = true
-vault_path = "/srv/jarvis-vault"
+vault_path = "/srv/lyra-vault"
 
 [memory]
 enabled = true
-db_path = "/srv/jarvis-state/memory.db"
+db_path = "/srv/lyra-state/memory.db"
 
 [browser]
 backend = "chromium"

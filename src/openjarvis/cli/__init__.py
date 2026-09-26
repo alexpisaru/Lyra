@@ -10,7 +10,7 @@ from openjarvis.system.builder import SystemBuilder
 from openjarvis.tools.packs import PACKS
 
 
-@click.group(help="OpenJarvis Lite — assistente locale per Ollama")
+@click.group(help="Lyra — assistente locale per Ollama (Lyra Core, fork ridotto di OpenJarvis)")
 @click.option("--config", type=click.Path(exists=True, dir_okay=False), default=None)
 @click.pass_context
 def cli(ctx, config):

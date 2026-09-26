@@ -1,12 +1,12 @@
 [Unit]
-Description=Obscura CDP for OpenJarvis Lite (experimental)
+Description=Obscura CDP for Lyra (experimental)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=jarvis
-Group=jarvis
+User=lyra
+Group=lyra
 WorkingDirectory=/opt/obscura-0.2.3
 Environment=OBSCURA_ALLOW_PRIVATE_NETWORK=0
 Environment=OBSCURA_NAV_TIMEOUT_MS=15000

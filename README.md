@@ -1,8 +1,19 @@
-# OpenJarvis Lite 0.2.1
+# Lyra 0.2.1
 
-Fork ridotto di [OpenJarvis](https://github.com/open-jarvis/OpenJarvis), base
-`13eefab4a993809c1a28739eebc32a67500e393f`, per un assistente personale locale su
-un CT Linux (Proxmox LXC, Debian/Ubuntu) con Ollama e `openbmb/minicpm5-2b:q8_0`.
+**Lyra** è un assistente personale locale per un CT Linux (Proxmox LXC,
+Debian/Ubuntu) con Ollama e `openbmb/minicpm5-2b:q8_0`. Il runtime, **Lyra Core**,
+è un fork ridotto di [OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
+(base `13eefab4a993809c1a28739eebc32a67500e393f`), in precedenza chiamato
+«OpenJarvis Lite». Il package Python interno resta `openjarvis` per continuità
+con l'upstream; comando, utente, path e pacchetto di distribuzione sono `lyra`.
+
+| | Nome |
+|---|---|
+| Comando | `lyra` (`jarvis` resta solo come alias **deprecated/legacy**, verrà rimosso) |
+| Pacchetto pip | `lyra-core` |
+| Utente Linux | `lyra` |
+| Sorgente e venv sul CT | `/opt/lyra`, `/opt/lyra/.venv` |
+| Dati | `/srv/lyra-vault`, `/srv/lyra-state`, `/srv/lyra-workspace` |
 
 Mantiene `OrchestratorAgent`, `ToolExecutor`, adapter Ollama e tipi upstream:
 un solo agente function-calling sequenziale, un **pack** di tool per richiesta
@@ -33,7 +44,7 @@ Due archivi separati, pack separati, nessuna migrazione automatica tra i due.
 | | Memory (runtime) | Knowledge (vault) |
 |---|---|---|
 | Cosa | Fatti brevi da ricordare («il mio colore preferito…») | Note e documenti Markdown |
-| Dove | `memory.db_path`, es. `/srv/jarvis-state/memory.db` | `knowledge.vault_path`, es. `/srv/jarvis-vault` |
+| Dove | `memory.db_path`, es. `/srv/lyra-state/memory.db` | `knowledge.vault_path`, es. `/srv/lyra-vault` |
 | Source of truth | Il database SQLite/FTS5 | **I file `.md`**; l'indice FTS5 è solo in RAM e ricostruibile |
 | Tool | `memory_store`, `memory_retrieve` | `notes_search`, `notes_read`, `notes_write`, `notes_append` |
 | Routing automatico | ricorda, ricordami, memorizza, memoria, remember, memory | nota/note, appunti, vault, Obsidian, Markdown, file `.md` |
@@ -49,7 +60,7 @@ Il vault è una normale directory di file Markdown UTF-8. Obsidian **non** è un
 dipendenza: si può aprire la stessa directory con Obsidian (o qualunque editor)
 tramite mount, Syncthing, rsync, SMB ecc. La sincronizzazione non è inclusa.
 
-- **Modifiche esterne**: a ogni `notes_search` Jarvis riscandisce il vault,
+- **Modifiche esterne**: a ogni `notes_search` Lyra riscandisce il vault,
   confronta gli hash del contenuto e aggiorna l'indice in RAM solo per i file
   cambiati; rinomine e cancellazioni vengono recepite. Nessun watcher in background.
 - Path relativi con `/` e estensione `.md`. Rifiutati: `..`, path assoluti,
@@ -63,55 +74,79 @@ tramite mount, Syncthing, rsync, SMB ecc. La sincronizzazione non è inclusa.
 - Limiti: 20.000 caratteri per scrittura, 256 KiB per nota, 5.000 voci e 16 MiB
   per scansione (oltre: errore esplicito, mai risultati parziali spacciati per
   completi), 3 risultati per ricerca.
-- Scritture Jarvis serializzate; se Obsidian e Jarvis scrivono lo **stesso** file
+- Scritture Lyra serializzate; se Obsidian e Lyra scrivono lo **stesso** file
   nello stesso momento vince l'ultimo (non c'è merge).
 
 ```toml
 [knowledge]
 enabled = true
-vault_path = "/srv/jarvis-vault"   # assoluto; memory.db deve stare fuori
+vault_path = "/srv/lyra-vault"   # assoluto; memory.db deve stare fuori
 
 [memory]
 enabled = true
-db_path = "/srv/jarvis-state/memory.db"
+db_path = "/srv/lyra-state/memory.db"
 ```
 
-## Installazione sul CT Jarvis (Debian 12/13 o Ubuntu 24.04, x86_64)
+## Installazione sul CT Lyra (Debian 12/13 o Ubuntu 24.04, x86_64)
 
 Nulla di questo è stato eseguito sul CT. Requisiti: Python 3.11–3.13
 (Debian 12 = 3.11, Debian 13 = 3.13, Ubuntu 24.04 = 3.12; Ubuntu 22.04 **no**),
 SQLite con FTS5 (presente nei pacchetti Debian/Ubuntu). Non servono Git, Rust,
-Node o Obsidian. Il modello resta nel CT Ollama: Jarvis non scarica modelli.
+Node o Obsidian. Il modello resta nel CT Ollama: Lyra non scarica modelli.
 
-1. Copiare questa cartella sul CT (senza `.git`, che contiene tutta la storia
-   upstream, e senza cache/venv locali), ad esempio dal PC:
+1. Copiare la cartella sorgente sul CT (senza `.git`, che contiene tutta la
+   storia upstream, e senza cache/venv locali). Sul PC la cartella si chiama
+   ancora `OpenJarvis-Lite/`; sul CT diventa `/opt/lyra`:
 
    ```bash
-   rsync -a --exclude .git --exclude .venv --exclude '.*cache' --exclude __pycache__ OpenJarvis-Lite/ root@IP-CT-JARVIS:/opt/jarvis-lite/
+   rsync -a \
+     --exclude .git \
+     --exclude .venv \
+     --exclude '.*cache' \
+     --exclude __pycache__ \
+     OpenJarvis-Lite/ \
+     root@IP-CT-LYRA:/opt/lyra/
    ```
 
    In alternativa `python -m build --sdist` sul PC e `tar -xzf
-   openjarvis_lite-0.2.1.tar.gz -C /opt/jarvis-lite --strip-components=1` sul CT.
+   lyra_core-0.2.1.tar.gz -C /opt/lyra --strip-components=1` sul CT.
 
 2. Come root nel CT:
 
    ```bash
-   apt update
-   apt install -y python3 python3-venv ca-certificates
-   id jarvis >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/jarvis --shell /usr/sbin/nologin jarvis
-   install -d -o jarvis -g jarvis -m 0750 /srv/jarvis-vault /srv/jarvis-state /srv/jarvis-workspace
-   chown -R jarvis:jarvis /opt/jarvis-lite
+   apt update && apt install -y python3 python3-venv ca-certificates
+
+   useradd --system \
+     --create-home \
+     --home-dir /var/lib/lyra \
+     --shell /usr/sbin/nologin \
+     lyra
+
+   install -d \
+     -o lyra \
+     -g lyra \
+     -m 0750 \
+     /srv/lyra-vault \
+     /srv/lyra-state \
+     /srv/lyra-workspace
+
+   chown -R lyra:lyra /opt/lyra
    ```
 
-3. Come utente `jarvis`:
+3. Come utente `lyra`:
 
    ```bash
-   runuser -u jarvis -- bash -c 'cd /opt/jarvis-lite && python3 -m venv .venv && .venv/bin/python -m pip install .'
-   runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml check
+   runuser -u lyra -- bash -c \
+     'cd /opt/lyra && python3 -m venv .venv && .venv/bin/python -m pip install .'
+
+   runuser -u lyra -- \
+     /opt/lyra/.venv/bin/lyra \
+     --config /opt/lyra/config/lite.toml \
+     check
    ```
 
-   Equivalente interattivo: `cd /opt/jarvis-lite && python3 -m venv .venv &&
-   source .venv/bin/activate && python -m pip install . && jarvis --config config/lite.toml check`.
+   Equivalente interattivo: `cd /opt/lyra && python3 -m venv .venv &&
+   source .venv/bin/activate && python -m pip install . && lyra --config config/lite.toml check`.
 
 `check` non genera testo e non crea directory: verifica Ollama e presenza del
 modello, directory di memoria e vault scrivibili, backend browser configurato.
@@ -129,7 +164,7 @@ timeout = 120.0
 ```
 
 Ollama deve ascoltare sulla LAN (nel CT Ollama `OLLAMA_HOST=0.0.0.0:11434`) e
-il firewall Proxmox deve permettere CT Jarvis → 192.168.1.252:11434. Il modello
+il firewall Proxmox deve permettere CT Lyra → 192.168.1.252:11434. Il modello
 deve essere già scaricato lì (`ollama pull openbmb/minicpm5-2b:q8_0` nel CT Ollama).
 L'adapter Ollama non passa dal guard SSRF del browser: il pack browser non può
 comunque raggiungere 192.168.1.252.
@@ -137,7 +172,7 @@ comunque raggiungere 192.168.1.252.
 ### Primo utilizzo
 
 ```bash
-J="runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite.toml"
+J="runuser -u lyra -- /opt/lyra/.venv/bin/lyra --config /opt/lyra/config/lite.toml"
 $J ask --json 'Calcola 17 * 23 usando calculator'
 $J ask --json 'Usa notes_write per creare prova.md con il testo ORCHIDEA-742'
 $J ask --json 'Cerca ORCHIDEA nelle mie note'
@@ -153,9 +188,9 @@ certifica l'azione. Esiti incompleti escono con codice 2.
 Script separato, non installa nulla (richiede l'extra dev per i test):
 
 ```bash
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[dev]'
-runuser -u jarvis -- bash /opt/jarvis-lite/scripts/ct-acceptance.sh
-runuser -u jarvis -- env BROWSER=chromium CONFIG=config/lite-chromium.toml bash /opt/jarvis-lite/scripts/ct-acceptance.sh
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev]'
+runuser -u lyra -- bash /opt/lyra/scripts/ct-acceptance.sh
+runuser -u lyra -- env BROWSER=chromium CONFIG=config/lite-chromium.toml bash /opt/lyra/scripts/ct-acceptance.sh
 ```
 
 Esegue suite completa (su Linux girano anche i test symlink/hardlink/FIFO),
@@ -178,13 +213,13 @@ cdp_url = "ws://127.0.0.1:9222"    # solo Obscura; solo IP loopback con porta
 fallback = "none"                  # oppure "chromium", ammesso solo con obscura
 ```
 
-Chromium, come root per le librerie di sistema e come `jarvis` per il browser:
+Chromium, come root per le librerie di sistema e come `lyra` per il browser:
 
 ```bash
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m pip install '/opt/jarvis-lite[browser]'
-/opt/jarvis-lite/.venv/bin/python -m playwright install-deps chromium
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/python -m playwright install chromium
-runuser -u jarvis -- /opt/jarvis-lite/.venv/bin/jarvis --config /opt/jarvis-lite/config/lite-chromium.toml check --browser
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[browser]'
+/opt/lyra/.venv/bin/python -m playwright install-deps chromium
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m playwright install chromium
+runuser -u lyra -- /opt/lyra/.venv/bin/lyra --config /opt/lyra/config/lite-chromium.toml check --browser
 ```
 
 Configurazioni pronte, identiche salvo il browser: `config/lite.toml` (browser
@@ -194,7 +229,7 @@ spento), `config/lite-chromium.toml` (Chromium), `config/lite-obscura.toml`
 Obscura (v0.2.3, unica versione considerata dal codice/doc): installazione Linux,
 servizio systemd e smoke in [docs/BROWSER.md](docs/BROWSER.md). **Resta
 EXPERIMENTAL**: su Windows non ha superato il probe di intercettazione richieste,
-quindi Jarvis lo rifiuta. Il probe non va mai disattivato per farlo funzionare.
+quindi Lyra lo rifiuta. Il probe non va mai disattivato per farlo funzionare.
 
 **Fallback esplicito, mai silenzioso.** Con `fallback="none"` un errore di Obscura
 fa fallire il tool e `check --browser`. Con `fallback="chromium"` il ripiego
@@ -226,7 +261,7 @@ avviene solo all'avvio della sessione, emette `RuntimeWarning` e riporta
   teoricamente possibile); risoluzioni DNS e preconnect del browser non passano
   dal guard (nessuna richiesta HTTP, ma traffico di rete sì). Per
   isolamento forte aggiungere regole egress nel firewall Proxmox del CT
-  (es. vietare al CT Jarvis la LAN salvo 192.168.1.252:11434 e DNS).
+  (es. vietare al CT Lyra la LAN salvo 192.168.1.252:11434 e DNS).
 
 ## Pack
 
@@ -252,6 +287,8 @@ timeout modello 120 s. Timeout e risultati incerti non vengono ritentati.
 Memoria, vault, file e browser richiedono almeno una chiamata tool; senza, il
 risultato è marcato `missing_tool_use`. La cronologia chat resta in RAM.
 
+SDK Python di Lyra Core (nomi interni ereditati da OpenJarvis, invariati di proposito):
+
 ```python
 from openjarvis import Jarvis
 with Jarvis(config_path="config/lite.toml") as jarvis:
@@ -266,6 +303,12 @@ python -m pytest -q -rs
 python -m ruff check src tests scripts
 python -m build
 ```
+
+Nomi interni lasciati invariati di proposito (non fanno parte dell'identità
+pubblica): package `openjarvis`, classi `Jarvis`/`JarvisSystem`/`JarvisConfig`,
+variabili `OPENJARVIS_CONFIG`, `OPENJARVIS_HOME` (default `~/.openjarvis-lite`,
+non usato sul CT dove si passa `--config`), `OPENJARVIS_SSRF_FAIL_OPEN`,
+`JARVIS_NUM_CTX`, e le variabili dei test `JARVIS_BROWSER_SMOKE`/`JARVIS_CDP_URL`.
 
 Documenti: [VALIDATION](docs/VALIDATION.md) (risultati reali),
 [BROWSER](docs/BROWSER.md), [SERVER_ACCEPTANCE](docs/SERVER_ACCEPTANCE.md),

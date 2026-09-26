@@ -92,3 +92,14 @@ Nuovi file: `scripts/ct-acceptance.sh`, `scripts/live_acceptance.py`, `config/li
 `docs/live-0.2.1.json`. Aggiornati: `config/lite.toml`, `config/lite-obscura.toml`,
 README e tutti i documenti in `docs/`. `pyproject.toml`: versione 0.2.1, `scripts`
 nel sorgente distribuito. `.gitignore`: output di collaudo. Nessuna dipendenza nuova.
+
+## Rename a Lyra (identità pubblica)
+
+Nessun cambiamento funzionale. Rinominati: comando `lyra` (alias `jarvis`
+deprecated in `pyproject.toml`), distribuzione `lyra-core`, testo di aiuto CLI,
+identità nel prompt di sistema, pagina «Blocked by Lyra», path di config
+(`/srv/lyra-*`), utente `lyra` in `config/obscura.service`, script di collaudo,
+README, NOTICE e documenti operativi. Invariati di proposito: package Python
+`openjarvis`, classi `Jarvis*`, variabili d'ambiente `OPENJARVIS_*`/`JARVIS_*`,
+hostname interni del probe browser, prefisso dei file temporanei del vault,
+attribuzione upstream, LICENSE e storico di validazione.

@@ -153,7 +153,7 @@ class _BrowserSession:
                 # page later, interrupting the next goto. Serve a local notice
                 # instead; nothing is requested from the blocked destination.
                 route.fulfill(
-                    status=403, content_type="text/plain", body=f"Blocked by Jarvis: {exc}"
+                    status=403, content_type="text/plain", body=f"Blocked by Lyra: {exc}"
                 )
             except Exception:
                 route.abort()
