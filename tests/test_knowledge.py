@@ -122,6 +122,7 @@ def test_symlink_escape(vault, tmp_path, directory):
             args["content"] = "forbidden"
         assert not run(vault, name, **args).success
     assert not vault.search("secret")[0]
+    assert vault.list_notes()[0] == []
     assert (outside / "secret.md").read_text() == "secret"
 
 
@@ -132,6 +133,8 @@ def test_hardlink_escape(vault, tmp_path):
     assert not run(vault, "notes_read", path="link.md").success
     assert not run(vault, "notes_write", path="link.md", content="bad").success
     assert not vault.search("secret")[0]
+    notes, skipped = vault.list_notes()
+    assert notes == [] and skipped == 1  # counted, never listed
     assert source.read_text() == "secret"
 
 
@@ -324,3 +327,46 @@ def test_engine_model_alias(tmp_path):
     path.write_text('[engine]\nmodel = "custom:q8"\n[intelligence]\nmodel = "other"')
     with pytest.raises(ValueError, match="disagree"):
         load_config(path)
+
+
+def test_list_notes_is_confined_and_follows_external_edits(vault):
+    root = vault.root
+    (root / "progetti").mkdir()
+    (root / ".obsidian").mkdir()
+    (root / ".trash").mkdir()
+    (root / "collaudo-lyra.md").write_text("# Collaudo Lyra\n\nametista", encoding="utf-8")
+    (root / "progetti" / "crm.md").write_text(
+        "---\ntags: [crm]\n---\n# Progetto CRM\n", encoding="utf-8"
+    )
+    (root / "Appunti.md").write_text("senza titolo", encoding="utf-8")
+    (root / ".obsidian" / "workspace.md").write_text("# no", encoding="utf-8")
+    (root / ".trash" / "old.md").write_text("# no", encoding="utf-8")
+    (root / ".hidden.md").write_text("# no", encoding="utf-8")
+    (root / "image.png").write_bytes(b"\x89PNG")
+    (root / "notes.txt").write_text("# no", encoding="utf-8")
+    notes, skipped = vault.list_notes()
+    assert notes == [
+        ("Appunti.md", "Appunti"),
+        ("collaudo-lyra.md", "Collaudo Lyra"),
+        ("progetti/crm.md", "Progetto CRM"),
+    ]
+    assert skipped == 0
+    # Obsidian/Syncthing changes show up on the next listing: edit, add, rename, delete.
+    (root / "Appunti.md").write_text("# Appunti veri\n", encoding="utf-8")
+    (root / "nuova.md").write_text("# Nuova", encoding="utf-8")
+    (root / "progetti" / "crm.md").rename(root / "progetti" / "crm-2026.md")
+    (root / "collaudo-lyra.md").unlink()
+    assert vault.list_notes()[0] == [
+        ("Appunti.md", "Appunti veri"),
+        ("nuova.md", "Nuova"),
+        ("progetti/crm-2026.md", "Progetto CRM"),
+    ]
+    # Listing and search share one index: no stale search hits after a delete.
+    assert not vault.search("ametista")[0]
+
+
+def test_list_notes_counts_unreadable_notes(vault):
+    (vault.root / "ok.md").write_text("# Ok", encoding="utf-8")
+    (vault.root / "latin1.md").write_bytes("caff\xe8".encode("latin-1"))
+    notes, skipped = vault.list_notes()
+    assert notes == [("ok.md", "Ok")] and skipped == 1

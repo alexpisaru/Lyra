@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { activityReducer, initialActivity } from '../lib/activity'
-import { deriveOrbState } from '../lib/orbState'
+import { deriveOrbState, type OrbPulse } from '../lib/orbState'
 import { LyraSocket, type ConnectionState } from '../lib/websocket'
 import type { LyraEvent, LyraStatus, RuntimeState } from '../types/api'
 import { useLyraWebSocket } from './useLyraWebSocket'
 
 export const STATUS_POLL_MS = 30000
 export const RESPONSE_PULSE_MS = 1400
+/** A fast tool (calculator) lasts ~50 ms: keep its visual state long enough to be seen. */
+export const TOOL_HOLD_MS = 1200
+/** Minimum gap between the outward (tool_started) and inward (tool_finished) pulses. */
+export const TOOL_PULSE_GAP_MS = 450
+
+export interface OrbSignal {
+  kind: OrbPulse
+  at: number
+}
 
 export interface LyraStateOptions {
   socket?: LyraSocket
@@ -24,8 +33,14 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
   const [reachable, setReachable] = useState<boolean | null>(null)
   const [runtime, setRuntime] = useState<RuntimeState>('idle')
   const [responding, setResponding] = useState(false)
+  const [toolHold, setToolHold] = useState(false)
+  const toolTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toolStartedAt = useRef(0)
+  const finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activity, dispatch] = useReducer(activityReducer, initialActivity)
   const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // One-shot orb events straight from the real runtime (tool start/finish, response).
+  const [signal, setSignal] = useState<OrbSignal | null>(null)
 
   // State is only set in promise callbacks (never synchronously inside an effect).
   const refreshStatus = useCallback(
@@ -47,6 +62,24 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
   const onEvent = useCallback((event: LyraEvent) => {
     dispatch({ type: 'event', event, at: Date.now() })
     if (event.type === 'state') setRuntime(event.state)
+    if (event.type === 'tool_started' || event.type === 'response') {
+      setSignal({ kind: event.type, at: performance.now() })
+    }
+    if (event.type === 'tool_started') toolStartedAt.current = performance.now()
+    if (event.type === 'tool_finished') {
+      // Fast tools finish ~30 ms after starting: space the in-pulse after the out-pulse.
+      const wait = Math.max(0, TOOL_PULSE_GAP_MS - (performance.now() - toolStartedAt.current))
+      if (finishTimer.current) clearTimeout(finishTimer.current)
+      finishTimer.current = setTimeout(() => setSignal({ kind: 'tool_finished', at: performance.now() }), wait)
+    }
+    if (event.type === 'tool_started') {
+      if (toolTimer.current) clearTimeout(toolTimer.current)
+      setToolHold(true)
+    }
+    if (event.type === 'tool_finished') {
+      if (toolTimer.current) clearTimeout(toolTimer.current)
+      toolTimer.current = setTimeout(() => setToolHold(false), TOOL_HOLD_MS)
+    }
     if (event.type === 'response') {
       setResponding(true)
       if (pulseTimer.current) clearTimeout(pulseTimer.current)
@@ -58,7 +91,10 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
     (state: ConnectionState) => {
       dispatch({ type: 'connection', state, at: Date.now() })
       if (state === 'open') void refreshStatus()
-      if (state === 'closed') setRuntime('idle')
+      if (state === 'closed') {
+        setRuntime('idle')
+        setToolHold(false)
+      }
     },
     [refreshStatus],
   )
@@ -74,13 +110,15 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
   useEffect(
     () => () => {
       if (pulseTimer.current) clearTimeout(pulseTimer.current)
+      if (toolTimer.current) clearTimeout(toolTimer.current)
+      if (finishTimer.current) clearTimeout(finishTimer.current)
     },
     [],
   )
 
   const orbState = useMemo(
-    () => deriveOrbState({ connection, runtime, responding }),
-    [connection, runtime, responding],
+    () => deriveOrbState({ connection, runtime, responding, toolHold }),
+    [connection, runtime, responding, toolHold],
   )
 
   const online = reachable === true && connection === 'open'
@@ -93,6 +131,7 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
     connection,
     runtime,
     orbState,
+    signal,
     activity: activity.entries,
     clearActivity,
     refreshStatus,

@@ -44,6 +44,7 @@ status_cache_seconds = 30.0
 | `GET /api/status` | Stato, versione, modello (raggiungibilità in cache 30 s), memory/knowledge/browser, `state`, `busy`, pack |
 | `POST /api/chat` | `{"message": "...", "pack": "auto"}`; pack: `auto`, `chat`, `general`, `files`, `memory`, `knowledge`, `browser` |
 | `POST /api/chat/reset` | Svuota solo la conversazione in RAM (non memory né vault) |
+| `GET /api/knowledge/notes` | Elenco delle note del vault: `{"notes": [{"path", "title"}], "skipped"}` |
 | `GET /api/knowledge/search?q=...` | Ricerca nel vault (stesso `MarkdownVault` di `notes_search`) |
 | `GET /api/knowledge/note?path=...` | Lettura nota (stesso `MarkdownVault.read` di `notes_read`) |
 | `GET /ws` | WebSocket eventi in tempo reale (solo server → client) |
@@ -75,8 +76,13 @@ Errore del modello/runtime → **502**. Lyra occupata → **409**.
 
 ### Knowledge
 
-Risposte `{"results": [{"path", "excerpt"}], "skipped": n}` e
-`{"path", "content"}`. Le protezioni sono quelle del vault, non duplicate:
+Risposte `{"notes": [{"path", "title"}], "skipped": n}` (elenco),
+`{"results": [{"path", "excerpt"}], "skipped": n}` e `{"path", "content"}`.
+L'elenco usa la stessa scansione confinata della ricerca (`MarkdownVault.list_notes`):
+solo `.md` regolari dentro il vault, niente link, file o cartelle nascosti
+(`.obsidian/`, `.trash/`), hard link contati in `skipped`; il titolo è il primo
+H1 dopo il frontmatter, altrimenti il nome file. Nessun parametro: non è un
+file browser generico. Le protezioni sono quelle del vault, non duplicate:
 `..`, path assoluti, drive/UNC, backslash, file nascosti (`.obsidian/`), non
 `.md`, symlink/hard link → **400**; nota assente → **404**; vault disattivato → **404**.
 Nessun endpoint di scrittura in 0.3.0.

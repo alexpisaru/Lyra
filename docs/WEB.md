@@ -45,8 +45,9 @@ web/
   usati in una riga minima (`calculator ✓`). La conversazione vive a livello app:
   passando a Home/Brain non si perde; «Nuova conversazione» chiama `/api/chat/reset`.
   409 → «Lyra sta già lavorando a una richiesta»; il testo digitato resta.
-- **Brain**: ricerca sul vault (`/api/knowledge/search`, debounce 280 ms) e lettura
-  (`/api/knowledge/note`). Desktop: split view; mobile: lista → nota a schermo
+- **Brain**: all'apertura elenca subito tutte le note (`/api/knowledge/notes`); la
+  ricerca filtra all'istante per titolo/percorso e aggiunge i risultati full-text
+  (`/api/knowledge/search`, debounce 280 ms). Lettura con `/api/knowledge/note`. Desktop: split view; mobile: lista → nota a schermo
   intero → indietro. Frontmatter nascosto, `[[wikilink]]` diventano ricerche,
   HTML grezzo mai eseguito, immagini del vault non caricate. Solo lettura.
 - **Activity**: timeline di `/ws` (Thinking, Using tool, Tool completed/failed,
@@ -59,23 +60,47 @@ web/
 ## Orb (Three.js/WebGL2)
 
 Un solo canvas a tutto schermo per tutta la sessione; cambiando vista cambia solo
-il framing (grande in Home, ridotto in alto in Chat, piccolo segno vivo in alto a
-sinistra in Brain/Activity), con easing nel render loop. Strati: guscio di
-particelle con vene luminose (ridged noise) e bordo fresnel, polvere interna,
-alone esterno, archi orbitali, glow billboard, stelle lontane. Blending
-additivo puro sul canvas trasparente (il fondo CSS resta visibile).
+il framing (molto grande in Home, medio-grande e vicino alla conversazione in Chat,
+piccolo segno vivo in alto a sinistra in Brain/Activity), con easing nel render loop.
 
-| Stato (da `/ws`) | Animazione |
+Composizione a strati ("nuvola energetica contenuta in una sfera"), tutti deformati
+dallo stesso campo di rumore (respiro, rigonfiamenti locali, asimmetria):
+
+1. **volume interno**: particelle con densità che migra, zone piene e vuote, core pulsante;
+2. **filamenti cyan/bianchi**: curve organiche generate con un cammino a curvatura
+   variabile (mai cerchi massimi), luce che scorre lungo il filamento;
+3. **strato viola/indaco**: meno filamenti, più curvi, che attraversano l'interno,
+   emergono in superficie e a volte escono; intensità indipendente (`purple`);
+4. **nuvola di superficie**: densità e bordo irregolari, zone viola localizzate;
+5. **archi esterni** cyan e viola che escono e rientrano, nascono e svaniscono;
+6. **alone** irregolare che segue l'energia, con macchie viola; stelle lontane.
+
+Ogni stato ha obiettivi propri, interpolati in ~450 ms (nessuna geometria ricreata):
+speed, deform, flow, core, purple, alternate, arcs, orbit, compression, dispersion,
+glow, brightness, hueShift, saturation, jitter (`web/src/lib/orbState.ts`).
+
+| Stato (da `/ws`) | Resa |
 |---|---|
-| idle | quasi sferico, respiro lento, poche particelle esterne |
-| thinking | più turbolenza e velocità, leggera instabilità |
-| using_tool | vortice orbitale e archi più visibili |
-| response | breve espansione/pulse (1,4 s), poi ritorno a idle |
-| error | perdita parziale di coesione, lieve deriva cromatica |
-| offline (`/ws` chiuso) | desaturato, lento, attenuato |
+| idle | respiro lento, filamenti che scorrono piano, viola lento ma visibile |
+| thinking | energia interna: flow 5×, core pulsante, viola più presente, alternanza cyan/viola |
+| using_tool | energia verso l'esterno: archi 3×, orbita 3×, interno compresso, dispersione |
+| response | onda dal centro alla superficie (~950 ms), flash cyan/bianco, poi filamenti viola illuminati, lieve espansione |
+| error | coesione persa, jitter, viola verso magenta, alone irregolare (niente orb rosso) |
+| offline (`/ws` chiuso) | quasi immobile, desaturato, viola quasi spento |
 | listening / speaking / interrupted | **predisposti, mai attivati** (Voice futura) |
 
-Prestazioni: qualità adattiva (26k/12k/6k particelle desktop/mobile/deboli),
+Eventi one-shot reali: `tool_started` → impulso verso l'esterno; `tool_finished` →
+impulso più morbido verso l'interno (distanziato di ≥450 ms dal primo); `response`
+→ onda. Uno strumento veloce (calculator ≈ 50 ms) resta visibile come `using_tool`
+fino a 1,2 s dopo `tool_finished`.
+
+In sviluppo (`npm run dev`) un pannello in alto a sinistra forza ogni stato e lancia
+gli impulsi, per il confronto visivo; non è incluso nella build di produzione
+(verificato: né JS né CSS in `dist`).
+
+Prestazioni: qualità adattiva (desktop ≈ 12k superficie + 5k volume + 36 filamenti
+cyan, 16 viola, 10 archi; mobile e dispositivi deboli ridotti; priorità a filamenti
+e strato viola rispetto al numero di particelle),
 devicePixelRatio ≤ 2, riduzione dinamica della risoluzione se i frame sono lenti,
 pausa quando la pagina è nascosta, `prefers-reduced-motion` (orb presente, ~20 fps,
 movimento ridotto al 12%), Three.js in un chunk separato caricato dopo la UI.

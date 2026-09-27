@@ -272,6 +272,7 @@ def test_knowledge_disabled_is_404(tmp_path):
         with TestClient(create_app(cfg, system=system, health_engine=MagicMock())) as client:
             assert client.get("/api/knowledge/search", params={"q": "x"}).status_code == 404
             assert client.get("/api/knowledge/note", params={"path": "a.md"}).status_code == 404
+            assert client.get("/api/knowledge/notes").status_code == 404
     finally:
         system.close()
 
@@ -284,6 +285,7 @@ def test_knowledge_disabled_is_404(tmp_path):
         ("post", "/api/chat/reset", {}),
         ("get", "/api/knowledge/search", {"params": {"q": "x"}}),
         ("get", "/api/knowledge/note", {"params": {"path": "a.md"}}),
+        ("get", "/api/knowledge/notes", {}),
     ],
 )
 def test_api_key_is_required_everywhere(lyra, method, path, kwargs):
@@ -349,6 +351,7 @@ def test_no_generic_browser_or_write_endpoints(lyra):
         "/api/chat/reset",
         "/api/knowledge/search",
         "/api/knowledge/note",
+        "/api/knowledge/notes",
         "/ws",
     }
     assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404
@@ -449,3 +452,28 @@ def test_api_serves_through_uvicorn_on_a_real_socket(tmp_path):
         server.should_exit = True
         thread.join(10)
         system.close()
+
+
+def test_knowledge_notes_lists_only_confined_markdown(lyra, tmp_path):
+    client, system, _ = lyra()
+    root = system.knowledge_vault.root
+    (root / "progetti").mkdir()
+    (root / ".obsidian").mkdir()
+    (root / "collaudo-lyra.md").write_text("# Collaudo Lyra\nametista", encoding="utf-8")
+    (root / "progetti" / "crm.md").write_text("---\na: b\n---\n# Progetto CRM", encoding="utf-8")
+    (root / ".obsidian" / "app.md").write_text("# hidden", encoding="utf-8")
+    (root / "photo.png").write_bytes(b"x")
+    outside = tmp_path / "outside.md"
+    outside.write_text("# Fuori", encoding="utf-8")
+    try:
+        (root / "link.md").symlink_to(outside)
+    except OSError:
+        pass  # symlinks not permitted here; the vault-level test covers it on POSIX
+    body = client.get("/api/knowledge/notes").json()
+    assert body["notes"] == [
+        {"path": "collaudo-lyra.md", "title": "Collaudo Lyra"},
+        {"path": "progetti/crm.md", "title": "Progetto CRM"},
+    ]
+    assert "Fuori" not in str(body) and str(root) not in str(body)
+    # No arbitrary parameters: the endpoint lists the vault, nothing else.
+    assert client.get("/api/knowledge/notes", params={"path": "../"}).json() == body

@@ -467,7 +467,7 @@ button {
 
 .chat-scroll {
   position: absolute;
-  top: 40dvh;
+  top: 43dvh;
   bottom: calc(var(--nav-h) + var(--nav-gap) + var(--safe-bottom) + var(--dock-h) + var(--kb));
   left: 0;
   right: 0;
@@ -1277,7 +1277,7 @@ button {
   }
 
   .chat-scroll {
-    top: 30dvh;
+    top: 33dvh;
   }
 
   .chat-thread {
@@ -1407,4 +1407,12 @@ button {
 .timeline::-webkit-scrollbar-thumb {
   border-radius: 3px;
   background: rgba(120, 165, 255, 0.22);
+}
+
+.brain-count {
+  margin: 12px 6px 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }

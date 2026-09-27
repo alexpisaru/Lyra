@@ -196,14 +196,39 @@ describe('orb state machine', () => {
     }
   })
 
-  it('gives each state the intended character', () => {
+  it('makes every state visibly different, not a small speed change', () => {
     const idle = orbParams('idle')
-    expect(orbParams('thinking').speed).toBeGreaterThan(idle.speed)
-    expect(orbParams('using_tool').orbit).toBeGreaterThan(orbParams('thinking').orbit)
-    expect(orbParams('response').pulse).toBeGreaterThan(0)
-    expect(orbParams('error').cohesion).toBeLessThan(0.9) // loses cohesion...
-    expect(orbParams('error').hueShift).toBeLessThan(0.5) // ...with only a small colour shift
-    expect(orbParams('offline').saturation).toBeLessThan(0.5)
+    const thinking = orbParams('thinking')
+    const tool = orbParams('using_tool')
+    // Thinking: internal energy, 2-3x activity, violet more present, cyan/violet alternation.
+    expect(thinking.flow).toBeGreaterThanOrEqual(idle.flow * 3)
+    expect(thinking.speed).toBeGreaterThanOrEqual(idle.speed * 2.5)
+    expect(thinking.core).toBeGreaterThanOrEqual(idle.core * 4)
+    expect(thinking.purple).toBeGreaterThan(idle.purple)
+    expect(thinking.alternate).toBe(1)
+    // Using tool: energy organised outwards (arcs, orbit), compact inside.
+    expect(tool.arcs).toBeGreaterThanOrEqual(thinking.arcs * 2.5)
+    expect(tool.orbit).toBeGreaterThanOrEqual(thinking.orbit * 3)
+    expect(tool.compression).toBeGreaterThan(thinking.compression)
+    expect(tool.core).toBeLessThan(thinking.core)
+    // Response: strongest glow; the wave itself is a one-shot pulse.
+    expect(orbParams('response').glow).toBeGreaterThan(Math.max(idle.glow, thinking.glow, tool.glow))
+    // Error: loses cohesion, jitters, violet drifts to magenta; not a red orb.
+    expect(orbParams('error').dispersion).toBeGreaterThan(0.4)
+    expect(orbParams('error').jitter).toBe(1)
+    expect(orbParams('error').saturation).toBeGreaterThan(0.8)
+    // Offline: almost still, desaturated, violet nearly off.
+    expect(orbParams('offline').speed).toBeLessThan(idle.speed / 4)
+    expect(orbParams('offline').saturation).toBeLessThan(0.3)
+    expect(orbParams('offline').purple).toBeLessThan(0.1)
+  })
+
+  it('keeps a fast tool visible as using_tool', () => {
+    const base = { connection: 'open' as const, responding: false }
+    expect(deriveOrbState({ ...base, runtime: 'thinking', toolHold: true })).toBe('using_tool')
+    expect(deriveOrbState({ ...base, runtime: 'idle', toolHold: true })).toBe('idle')
+    expect(deriveOrbState({ ...base, runtime: 'error', toolHold: true })).toBe('error')
+    expect(deriveOrbState({ ...base, connection: 'closed', runtime: 'thinking', toolHold: true })).toBe('offline')
   })
 
   it('picks lighter quality on phones and weak devices', () => {

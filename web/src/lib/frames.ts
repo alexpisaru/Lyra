@@ -18,8 +18,9 @@ export function orbFrame(view: View, width: number, height: number): OrbFrame {
       if (landscapePhone) return { size: 0.66, x: 0, y: 0.12, presence: 1 }
       return phone ? { size: 0.72, x: 0, y: 0.1, presence: 1 } : { size: 0.58, x: 0, y: 0.07, presence: 1 }
     case 'chat':
-      if (landscapePhone) return { size: 0.3, x: -0.72, y: 0.3, presence: 0.9 }
-      return phone ? { size: 0.44, x: 0, y: 0.64, presence: 0.95 } : { size: 0.3, x: 0, y: 0.54, presence: 0.95 }
+      // Medium/large and close to the conversation: the orb stays a presence, not a decoration.
+      if (landscapePhone) return { size: 0.36, x: -0.7, y: 0.25, presence: 0.95 }
+      return phone ? { size: 0.54, x: 0, y: 0.6, presence: 1 } : { size: 0.42, x: 0, y: 0.47, presence: 1 }
     default:
       return mark(phone ? 40 : 46)
   }

@@ -1,3 +1,29 @@
+# Lyra Web 0.4 — correzione orb e Brain (27 settembre 2026)
+
+Solo orb e lista note di Brain; resto della GUI invariato.
+
+**Causa della scarsa reattività dell'orb** (verificata contro il `/ws` reale):
+1. gli stati arrivavano, ma la resa cambiava di pochi punti percentuali su un solo
+   guscio di particelle; 2. gli eventi `tool_started`/`tool_finished`/`response` non
+   producevano nessun effetto proprio; 3. con uno strumento veloce (calculator)
+   `using_tool` durava ~50 ms, meno della transizione visiva; 4. mancava lo strato viola.
+
+| Verifica | Esito |
+|---|---|
+| Suite Python | **299 passed, 6 skipped, 0 failed** (+4 test `list_notes` / `/api/knowledge/notes`) |
+| ruff | pulito |
+| Frontend lint / test | pulito / **36 passed** |
+| Build produzione | ok; pannello DEV assente da `dist` (JS e CSS) |
+| Sequenza reale `/ws` registrata dalla pagina (chat calculator con MiniCPM) | idle → thinking → using_tool + impulso out → impulso in (+457 ms) → thinking → onda response → response → idle |
+| Brain | elenco completo all'apertura, ricerca vuota; desktop e iPhone (lista → nota → indietro) |
+
+Il nuovo endpoint `GET /api/knowledge/notes` richiede Lyra Core aggiornato sul CT:
+finché il CT resta alla versione precedente, Brain mostra un errore di caricamento
+dell'elenco con l'invito ad aggiornare Lyra Core (la ricerca continua a funzionare).
+NOT VERIFIED ON TARGET LINUX CT.
+
+---
+
 # Lyra Web 0.4.0 — PWA (27 settembre 2026)
 
 Frontend nuovo in `web/`; nessuna modifica a Lyra Core/API (resta 0.3.0) né a

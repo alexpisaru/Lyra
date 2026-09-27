@@ -287,6 +287,17 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
             busy.release()
         return {"status": "ok", "cleared_exchanges": cleared}
 
+    @app.get("/api/knowledge/notes", dependencies=[Depends(guard)])
+    async def knowledge_notes():
+        # Same confined scan as search (no links, hidden entries or non-.md files);
+        # only relative vault paths and titles leave the server.
+        vault = _vault()
+        try:
+            notes, skipped = await asyncio.to_thread(vault.list_notes)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"notes": [{"path": path, "title": title} for path, title in notes], "skipped": skipped}
+
     @app.get("/api/knowledge/search", dependencies=[Depends(guard)])
     async def knowledge_search(q: str = Query(min_length=1, max_length=300)):
         vault = _vault()

@@ -43,6 +43,16 @@ export interface SearchResponse {
   skipped: number
 }
 
+export interface NoteSummary {
+  path: string
+  title: string
+}
+
+export interface NotesResponse {
+  notes: NoteSummary[]
+  skipped: number
+}
+
 export interface NoteResponse {
   path: string
   content: string

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { OrbFrame, OrbScene } from '../lib/orbScene'
-import type { OrbState } from '../lib/orbState'
+import type { OrbPulse, OrbState } from '../lib/orbState'
 import { supportsWebGL } from '../lib/webgl'
 
 function prefersReducedMotion() {
@@ -10,6 +10,8 @@ function prefersReducedMotion() {
 interface LyraOrbProps {
   state: OrbState
   frame: OrbFrame
+  /** latest one-shot event; a new `at` triggers the pulse once */
+  signal?: { kind: OrbPulse; at: number } | null
 }
 
 /**
@@ -18,7 +20,7 @@ interface LyraOrbProps {
  * as a separate chunk so the interface paints first; where WebGL2 is missing a
  * quiet CSS orb stands in.
  */
-export function LyraOrb({ state, frame }: LyraOrbProps) {
+export function LyraOrb({ state, frame, signal }: LyraOrbProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<OrbScene | null>(null)
   const latest = useRef({ state, frame })
@@ -97,8 +99,12 @@ export function LyraOrb({ state, frame }: LyraOrbProps) {
     sceneRef.current?.setFrame(frame)
   }, [frame])
 
+  useEffect(() => {
+    if (signal) sceneRef.current?.pulse(signal.kind)
+  }, [signal])
+
   return (
-    <div className="orb-layer" data-orb-state={state} data-orb-renderer={fallback ? 'css' : 'webgl'} aria-hidden="true">
+    <div className="orb-layer" data-orb-state={state} data-orb-pulse={signal?.kind} data-orb-renderer={fallback ? 'css' : 'webgl'} aria-hidden="true">
       {fallback ? (
         <div
           className="orb-fallback"

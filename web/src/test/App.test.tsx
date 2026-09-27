@@ -27,8 +27,9 @@ function setup(routes: Parameters<typeof mockFetch>[0] = {}) {
   const connect = () => act(() => FakeSocket.latest().open())
   const emit = (event: Parameters<FakeSocket['emit']>[0]) => act(() => FakeSocket.latest().emit(event))
   const orbState = () => document.querySelector('.orb-layer')?.getAttribute('data-orb-state')
+  const orbPulse = () => document.querySelector('.orb-layer')?.getAttribute('data-orb-pulse')
   const nav = (name: string) => user.click(within(screen.getByRole('navigation')).getByRole('button', { name }))
-  return { ...utils, fetchMock, socket, user, connect, emit, orbState, nav }
+  return { ...utils, fetchMock, socket, user, connect, emit, orbState, orbPulse, nav }
 }
 
 describe('Home', () => {
@@ -135,39 +136,94 @@ describe('Chat', () => {
 })
 
 describe('Brain', () => {
-  it('searches the vault and opens a note (read-only)', async () => {
-    const { user, nav, fetchMock } = setup({
-      '/api/knowledge/search': () => json({ results: [{ path: NOTE.path, excerpt: '# Progetto CRM Un **CRM leggero**' }], skipped: 0 }),
+  const NOTES = {
+    notes: [
+      { path: 'appunti.md', title: 'Appunti' },
+      { path: 'collaudo-lyra.md', title: 'Collaudo Lyra' },
+      { path: 'progetti/crm.md', title: 'Progetto CRM' },
+    ],
+    skipped: 0,
+  }
+
+  it('lists every note as soon as it opens, without searching', async () => {
+    const { nav, fetchMock } = setup({ '/api/knowledge/notes': () => json(NOTES) })
+    await nav('Brain')
+    const list = await screen.findByRole('list', { name: 'Note del vault' })
+    expect(within(list).getAllByRole('button').map((b) => b.querySelector('.brain-result-title')?.textContent)).toEqual([
+      'Appunti',
+      'Collaudo Lyra',
+      'Progetto CRM',
+    ])
+    expect(screen.getByText('3 note')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Cerca nelle note…')).toHaveValue('')
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/knowledge/search'))).toBe(false)
+  })
+
+  it('filters by title/path at once and merges full-text hits', async () => {
+    const { user, nav } = setup({
+      '/api/knowledge/notes': () => json(NOTES),
+      '/api/knowledge/search': () =>
+        json({ results: [{ path: 'collaudo-lyra.md', excerpt: '# Collaudo Lyra Il colore è **ametista**' }], skipped: 0 }),
+    })
+    await nav('Brain')
+    await screen.findByRole('list', { name: 'Note del vault' })
+    const input = screen.getByPlaceholderText('Cerca nelle note…')
+    await user.type(input, 'crm')
+    expect(screen.getAllByRole('button', { name: /Progetto CRM/ })).toHaveLength(1) // title match, instant
+    expect(screen.queryByRole('button', { name: /Appunti/ })).not.toBeInTheDocument()
+    await user.clear(input)
+    await user.type(input, 'ametista')
+    // Not in any title: found by the vault full-text search, with a clean excerpt.
+    expect(await screen.findByText('Collaudo Lyra Il colore è ametista')).toBeInTheDocument()
+  })
+
+  it('opens a note read-only and follows wikilinks as searches', async () => {
+    const { user, nav } = setup({
+      '/api/knowledge/notes': () => json(NOTES),
+      '/api/knowledge/search': () => json({ results: [], skipped: 0 }),
       '/api/knowledge/note': () => json(NOTE),
     })
     await nav('Brain')
-    await user.type(screen.getByPlaceholderText('Cerca nel tuo vault…'), 'crm')
-    const result = await screen.findByRole('button', { name: /Progetto CRM Un CRM leggero/ })
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/knowledge/search?q=crm')).toBe(true)
-    await user.click(result)
+    await user.click(await screen.findByRole('button', { name: /Progetto CRM/ }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Progetto CRM' })).toBeInTheDocument()
-    expect(screen.getByText('progetti/crm.md')).toBeInTheDocument()
     expect(screen.getByText('CRM leggero').tagName).toBe('STRONG')
     expect(screen.queryByText(/tags:/)).not.toBeInTheDocument() // frontmatter hidden
-    expect(screen.queryByRole('textbox', { name: /modifica/i })).not.toBeInTheDocument()
-    // A wikilink runs a new search inside Brain.
     await user.click(screen.getByRole('button', { name: 'collaudo-lyra' }))
-    expect(screen.getByPlaceholderText('Cerca nel tuo vault…')).toHaveValue('collaudo-lyra')
+    expect(screen.getByPlaceholderText('Cerca nelle note…')).toHaveValue('collaudo-lyra')
   })
 
-  it('explains an empty result and a missing note', async () => {
+  it('explains an empty vault and a search without matches', async () => {
     const { user, nav } = setup({
+      '/api/knowledge/notes': () => json({ notes: [], skipped: 0 }),
       '/api/knowledge/search': () => json({ results: [], skipped: 0 }),
     })
     await nav('Brain')
-    await user.type(screen.getByPlaceholderText('Cerca nel tuo vault…'), 'zzz')
+    expect(await screen.findByText('Il vault non contiene ancora note.')).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('Cerca nelle note…'), 'zzz')
     expect(await screen.findByText('Nessuna nota trovata per «zzz».')).toBeInTheDocument()
+  })
+
+  it('says so when knowledge is off on Lyra', async () => {
+    const { nav } = setup({ '/api/knowledge/notes': () => json({ detail: 'Knowledge vault is disabled' }, 404) })
+    await nav('Brain')
+    expect(await screen.findByText('Knowledge non è attivo su Lyra')).toBeInTheDocument()
+  })
+
+  it('keeps search usable against an older Lyra Core without the list endpoint', async () => {
+    const { user, nav } = setup({
+      '/api/knowledge/notes': () => json({ detail: 'Not Found' }, 404),
+      '/api/knowledge/search': () => json({ results: [{ path: 'progetti/crm.md', excerpt: 'CRM leggero' }], skipped: 0 }),
+    })
+    await nav('Brain')
+    expect(await screen.findByText(/aggiorna Lyra Core sul server/)).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('Cerca nelle note…'), 'crm')
+    expect(await screen.findByRole('button', { name: /CRM leggero/ })).toBeInTheDocument()
   })
 })
 
 describe('Live runtime', () => {
   it('drives the orb and the Activity timeline from real /ws events', async () => {
-    const { nav, connect, emit, orbState } = setup()
+    const { nav, connect, emit, orbState, orbPulse } = setup()
     connect()
     expect(orbState()).toBe('idle')
     emit({ type: 'state', state: 'thinking' })
@@ -175,9 +231,14 @@ describe('Live runtime', () => {
     emit({ type: 'state', state: 'using_tool' })
     emit({ type: 'tool_started', tool: 'calculator' })
     expect(orbState()).toBe('using_tool')
+    expect(orbPulse()).toBe('tool_started') // outward pulse
     emit({ type: 'tool_finished', tool: 'calculator', success: true })
     emit({ type: 'state', state: 'thinking' })
+    // A fast tool stays visible, and the inward pulse follows the outward one.
+    expect(orbState()).toBe('using_tool')
+    await waitFor(() => expect(orbPulse()).toBe('tool_finished'))
     emit({ type: 'response', content: '391' })
+    expect(orbPulse()).toBe('response')
     emit({ type: 'state', state: 'idle' })
     expect(orbState()).toBe('response')
     await waitFor(() => expect(orbState()).toBe('idle'), { timeout: 3000 })
@@ -213,7 +274,7 @@ describe('Live runtime', () => {
       })
       expect(FakeSocket.instances).toHaveLength(2) // reconnecting on its own
       await nav('Brain') // UI stays usable while offline
-      expect(screen.getByPlaceholderText('Cerca nel tuo vault…')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Cerca nelle note…')).toBeInTheDocument()
       connect()
       expect(orbState()).toBe('idle')
     } finally {
@@ -227,7 +288,7 @@ describe('Mobile', () => {
     Object.assign(window, { innerWidth: 390, innerHeight: 844 })
     window.dispatchEvent(new Event('resize'))
     const { user, nav } = setup({
-      '/api/knowledge/search': () => json({ results: [{ path: NOTE.path, excerpt: 'CRM' }], skipped: 0 }),
+      '/api/knowledge/notes': () => json({ notes: [{ path: NOTE.path, title: 'Progetto CRM' }], skipped: 0 }),
       '/api/knowledge/note': () => json(NOTE),
     })
     await nav('Chat')
@@ -235,8 +296,8 @@ describe('Mobile', () => {
     await nav('Brain')
     const brain = screen.getByRole('region', { name: 'Brain' })
     expect(brain).toHaveAttribute('data-note-open', 'false')
-    await user.type(screen.getByPlaceholderText('Cerca nel tuo vault…'), 'crm')
-    await user.click(await screen.findByRole('button', { name: /crm/i }))
+    // The list is there immediately: tap a note, read it full screen, go back.
+    await user.click(await screen.findByRole('button', { name: /Progetto CRM/ }))
     await screen.findByRole('heading', { level: 1, name: 'Progetto CRM' })
     expect(brain).toHaveAttribute('data-note-open', 'true')
     await user.click(screen.getByRole('button', { name: 'Note' }))

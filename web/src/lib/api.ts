@@ -1,4 +1,4 @@
-import type { ChatResponse, LyraStatus, NoteResponse, Pack, SearchResponse } from '../types/api'
+import type { ChatResponse, LyraStatus, NoteResponse, NotesResponse, Pack, SearchResponse } from '../types/api'
 
 /**
  * The only place that talks HTTP to Lyra API. Same origin: in production Caddy
@@ -85,6 +85,8 @@ export const api = {
     }),
 
   resetChat: () => request<{ status: 'ok'; cleared_exchanges: number }>('/api/chat/reset', { method: 'POST' }),
+
+  listNotes: (signal?: AbortSignal) => request<NotesResponse>('/api/knowledge/notes', { signal }),
 
   searchNotes: (q: string, signal?: AbortSignal) =>
     request<SearchResponse>(`/api/knowledge/search?q=${encodeURIComponent(q)}`, { signal }),

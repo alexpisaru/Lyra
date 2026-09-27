@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { ActivityView } from './components/ActivityView'
 import { BottomNav, type View } from './components/BottomNav'
 import { BrainView } from './components/BrainView'
@@ -6,10 +6,15 @@ import { ChatView } from './components/ChatView'
 import { LyraOrb } from './components/LyraOrb'
 import { StatusPill } from './components/StatusPill'
 import { useChat } from './hooks/useChat'
-import { useLyraState, type LyraStateOptions } from './hooks/useLyraState'
+import { useLyraState, type LyraStateOptions, type OrbSignal } from './hooks/useLyraState'
 import { useViewport } from './hooks/useViewport'
 import { captionTop, orbFrame } from './lib/frames'
-import { ORB_LABEL } from './lib/orbState'
+import { ORB_LABEL, type OrbState } from './lib/orbState'
+
+// Development-only orb inspector: the condition is constant-folded away in production builds
+// (and kept out of the Vitest runs, where MODE is 'test').
+const DevOrbPanel =
+  import.meta.env.DEV && import.meta.env.MODE !== 'test' ? lazy(() => import('./components/DevOrbPanel')) : null
 
 const VIEWS: View[] = ['home', 'chat', 'brain', 'activity']
 
@@ -24,6 +29,8 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   const viewport = useViewport()
   const [view, setView] = useState<View>(initialView)
   const [seenActivity, setSeenActivity] = useState(0)
+  const [forcedOrb, setForcedOrb] = useState<OrbState | null>(null)
+  const [devSignal, setDevSignal] = useState<OrbSignal | null>(null)
   // Connection rows are bookkeeping; only real Lyra activity lights the badge.
   const activityCount = lyra.activity.filter((entry) => entry.kind !== 'connection').length
 
@@ -45,6 +52,10 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
     [view, viewport.width, viewport.height],
   )
 
+  const orbState = forcedOrb ?? lyra.orbState
+  // The most recent one-shot event wins, whether from /ws or the dev panel.
+  const signal = devSignal && (!lyra.signal || devSignal.at > lyra.signal.at) ? devSignal : lyra.signal
+
   const caption =
     lyra.orbState === 'offline'
       ? lyra.reachable === false
@@ -62,7 +73,17 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
       style={{ '--kb': `${viewport.keyboard}px` } as React.CSSProperties}
     >
       <div className="backdrop" aria-hidden="true" />
-      <LyraOrb state={lyra.orbState} frame={frame} />
+      <LyraOrb state={orbState} frame={frame} signal={signal} />
+      {DevOrbPanel ? (
+        <Suspense fallback={null}>
+          <DevOrbPanel
+            forced={forcedOrb}
+            live={lyra.orbState}
+            onForce={setForcedOrb}
+            onPulse={(kind) => setDevSignal({ kind, at: performance.now() })}
+          />
+        </Suspense>
+      ) : null}
       <StatusPill status={lyra.status} reachable={lyra.reachable} connection={lyra.connection} />
 
       <main className="stage">

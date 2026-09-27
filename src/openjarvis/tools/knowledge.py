@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
 import threading
 import uuid
@@ -19,6 +20,15 @@ MAX_NOTE_BYTES = 262_144
 MAX_SCAN_BYTES = 16 * 1024 * 1024
 MAX_ENTRIES = 5000
 MAX_CONTENT_CHARS = 20_000
+
+_FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n.*?\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
+_HEADING = re.compile(r"\A\s*#[ \t]+(.+?)[ \t]*#*[ \t]*(?:\r?\n|\Z)")
+
+
+def note_title(name, content):
+    """Leading level-1 heading (after YAML frontmatter), else the file name."""
+    match = _HEADING.match(_FRONTMATTER.sub("", content, count=1))
+    return match.group(1)[:200] if match else Path(name).stem
 
 
 def _is_link(path):
@@ -45,6 +55,7 @@ class MarkdownVault:
         self._closed = False
         self._index = SQLiteMemory(":memory:")
         self._hashes = {}
+        self._titles = {}
 
     def _parts(self, name):
         if not isinstance(name, str) or not name or len(name) > 512:
@@ -170,6 +181,21 @@ class MarkdownVault:
         if not isinstance(query, str) or not query.strip() or len(query) > 300:
             raise ValueError("query must contain 1..300 characters")
         with self._lock:
+            skipped = self._refresh()
+            results = self._index.retrieve(query, top_k=3)
+            return results, skipped
+
+    def list_notes(self):
+        """Every readable note as (path, title), from the same confined scan as search."""
+        with self._lock:
+            skipped = self._refresh()
+            notes = sorted(self._titles.items(), key=lambda item: item[0].casefold())
+            return notes, skipped
+
+    def _refresh(self):
+        """Re-scan the vault (no links, no hidden entries, .md only, bounded) and
+        update the in-RAM index for changed notes. Returns the skipped count."""
+        with self._lock:
             self._check_open()
             seen, skipped = set(), 0
             entries, total_bytes = 0, 0
@@ -212,16 +238,18 @@ class MarkdownVault:
                                 name, [(content, None)] if content.strip() else []
                             )
                             self._hashes[name] = digest
+                            self._titles[name] = note_title(name, content)
                 for removed in self._hashes.keys() - seen:
                     self._index.replace_source(removed, [])
                     del self._hashes[removed]
+                    self._titles.pop(removed, None)
             except Exception:
                 # A failed scan must never serve an old or partially refreshed index.
                 self._index.clear()
                 self._hashes.clear()
+                self._titles.clear()
                 raise
-            results = self._index.retrieve(query, top_k=3)
-            return results, skipped
+            return skipped
 
     def close(self):
         with self._lock:
