@@ -125,7 +125,25 @@ Laya resta fuori: potrà solo passare un nome pack a `JarvisSystem.ask`.
 Chromium; suite 269 passed / 1 skipped / 0 failed, live acceptance 9/9; dettagli
 in VALIDATION.md). Base stabile per il prossimo sviluppo, che resta fuori da 0.2.1:
 
-- Lyra API: primo processo persistente; solo allora verrà aggiunto `lyra.service`
-  (oggi Lyra Core è una CLI e non c'è un daemon da gestire con systemd).
+- Lyra API: realizzata in 0.3.0 (sotto), con `config/lyra-api.service`.
 - GUI, voce, Laya, provider Windows: non iniziati.
 - Obscura resta EXPERIMENTAL finché `check --browser` e smoke non passano sul CT.
+
+## Lyra API 0.3.0
+
+Livello sottile sopra il core, non un secondo runtime (`src/openjarvis/api.py`):
+
+- `/api/chat` chiama `JarvisSystem.ask` come `lyra ask`/`chat`; `pack="auto"` usa
+  `route_pack`; una conversazione in RAM come `lyra chat`, `/api/chat/reset`.
+- `/api/knowledge/search|note` chiamano `MarkdownVault.search/read`: stesse
+  protezioni dei tool notes, nessuna logica duplicata; nessuna scrittura via API.
+- `/ws` inoltra `INFERENCE_START` e `TOOL_CALL_START/END` già pubblicati
+  sull'EventBus dal runtime; nessun hook nuovo nel core.
+- Single user: lock non bloccante, seconda richiesta agentica → 409.
+- Sicurezza: bind 127.0.0.1 di default, API key opzionale (Bearer, confronto in
+  tempo costante), controllo Origin, CORS solo per origin espliciti, nessun
+  endpoint browser generico. FastAPI/Uvicorn/websockets nell'extra `api`.
+- `lyra api` è il primo processo persistente: `config/lyra-api.service`.
+
+Prossimi passi (non iniziati): GUI/PWA, conferma click/type e scrittura note via
+API, Voice, Laya, provider Windows 4B.

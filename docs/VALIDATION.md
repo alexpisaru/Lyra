@@ -1,3 +1,45 @@
+# Lyra Core 0.3.0 — Lyra API (27 settembre 2026)
+
+Nuovo livello HTTP + WebSocket (`src/openjarvis/api.py`, `lyra api`) sopra lo
+stesso `JarvisSystem`. Nessuna modifica a agente, ToolExecutor, pack, router,
+memory, knowledge, browser o guard SSRF/WebRTC/redirect: gli eventi WebSocket
+usano l'EventBus che il runtime già pubblicava. Dettagli: [API.md](API.md).
+
+**Stato: verificato su Windows; NOT VERIFIED ON TARGET LINUX CT.** Il nucleo
+0.2.1 resta VERIFIED sul CT (sezione sotto).
+
+| Verifica (Windows 11, Python 3.12, FastAPI 0.141.1, Uvicorn 0.54.0, websockets 17.1) | Esito |
+|---|---|
+| Suite completa `python -m pytest -q -rs` | **295 passed, 6 skipped, 0 failed** (264 precedenti + 31 nuovi test API; stessi 6 skip Windows) |
+| Nuovi test API ripetuti 4 volte | 31/31 ogni volta |
+| Smoke Chromium reale | 1 passed (browser invariato) |
+| ruff check `src tests scripts` | All checks passed |
+| build | `lyra_core-0.3.0` sdist + wheel |
+| Wheel senza extra in venv pulito | CLI ok, FastAPI assente, `lyra api` → errore chiaro «pip install '.[api]'» |
+| Wheel con `[api]` in venv pulito | `lyra --config … api` parte; `/api/status` risponde; Origin estraneo → 403 |
+| `scripts/api_smoke.py` contro il server reale (runtime sul PC, MiniCPM sul CT Ollama), 2 giri | **7/7** e **7/7** |
+
+I 31 test API girano su un `JarvisSystem` reale (agente, ToolExecutor,
+EventBus, vault) con solo `generate` del modello simulato; uno avvia uvicorn su
+un socket TCP reale con WebSocket reale. Coprono: status e cache, chat con pack
+esplicito e auto, 400/415/422, cronologia RAM e reset, errore del modello (502 +
+eventi error), 409 con richiesta concorrente reale, eventi state/tool in ordine,
+tool fallito, knowledge search/read e modifica esterna, traversal/assoluti/
+drive/backslash/nascosti/non-.md bloccati, vault disattivato, API key su tutti
+gli endpoint e sul WebSocket (header e subprotocol), Origin/CORS allowlist senza
+`*`, assenza di endpoint browser/scrittura, parsing config, comando `lyra api`.
+
+Sequenza eventi osservata con il modello reale:
+`thinking → using_tool → tool_started calculator → tool_finished (success) →
+thinking → response «17 * 23 = 391» → idle`. Chat knowledge: `notes_search`
+riuscito e nota trovata, ma la prosa finale di MiniCPM era incompleta
+(«Vediamo il file completo:»): stesso limite qualitativo già noto.
+
+Non eseguito: nulla sul CT Linux (API, systemd, LAN/Tailscale, test con extra
+api su Linux). Comandi in [SERVER_ACCEPTANCE.md](SERVER_ACCEPTANCE.md).
+
+---
+
 # LYRA CORE 0.2.1 — TARGET LINUX CT: VERIFIED
 
 Collaudo eseguito dall'utente sul CT target reale, dopo il rename (`98ed43a`,

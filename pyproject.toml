@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lyra-core"
-version = "0.2.1"
+version = "0.3.0"
 description = "Lyra Core: local assistant runtime, a reduced fork of OpenJarvis, for a 2B model on Ollama"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -13,7 +13,8 @@ dependencies = ["click>=8,<9", "httpx>=0.27,<1", "jsonschema>=4.20,<5"]
 
 [project.optional-dependencies]
 browser = ["playwright>=1.48,<2"]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.22", "ruff>=0.4", "build>=1"]
+api = ["fastapi>=0.110,<1", "uvicorn>=0.29,<1", "websockets>=12,<18"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.22", "ruff>=0.4", "build>=1", "fastapi>=0.110,<1", "uvicorn>=0.29,<1", "websockets>=12,<18"]
 
 [project.scripts]
 lyra = "openjarvis.cli:main"

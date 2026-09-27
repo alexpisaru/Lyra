@@ -94,6 +94,50 @@ class BrowserConfig:
 
 
 @dataclass
+class ApiConfig:
+    """`lyra api`: HTTP + WebSocket layer over the same JarvisSystem. Off by default."""
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8787
+    # Empty = no auth (loopback use). When set: Authorization: Bearer <api_key>.
+    api_key: str = ""
+    # Exact browser origins allowed to call the API cross-origin; never "*".
+    allowed_origins: list[str] = field(default_factory=list)
+    status_cache_seconds: float = 30.0
+
+    def validate(self):
+        from urllib.parse import urlsplit
+
+        if not self.host.strip():
+            raise ValueError("api.host must not be empty")
+        if not 1 <= self.port <= 65535:
+            raise ValueError("api.port must be 1..65535")
+        if self.api_key and (len(self.api_key) < 16 or not self.api_key.isprintable()):
+            raise ValueError("api.api_key must be at least 16 printable characters")
+        if self.api_key and any(c.isspace() for c in self.api_key):
+            raise ValueError("api.api_key must not contain whitespace")
+        for origin in self.allowed_origins:
+            parts = urlsplit(origin)
+            if (
+                origin == "*"
+                or parts.scheme not in ("http", "https")
+                or not parts.hostname
+                or parts.path not in ("",)
+                or parts.query
+                or parts.fragment
+                or parts.username
+            ):
+                raise ValueError(
+                    "api.allowed_origins entries must be exact origins like "
+                    "http://192.168.1.10:8787 (no '*', path or query)"
+                )
+        if not 0 <= self.status_cache_seconds <= 3600:
+            raise ValueError("api.status_cache_seconds must be 0..3600")
+        return self
+
+
+@dataclass
 class JarvisConfig:
     intelligence: IntelligenceConfig = field(default_factory=IntelligenceConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
@@ -103,11 +147,13 @@ class JarvisConfig:
 
     knowledge: KnowledgeConfig = field(default_factory=KnowledgeConfig)
     browser: BrowserConfig = field(default_factory=BrowserConfig)
+    api: ApiConfig = field(default_factory=ApiConfig)
 
     def validate(self):
         from openjarvis.tools.packs import PACKS
 
         self.browser.validate()
+        self.api.validate()
         if self.engine.model:
             if self.intelligence.model not in (self.engine.model, IntelligenceConfig.model):
                 raise ValueError("engine.model and intelligence.model disagree; set only one")

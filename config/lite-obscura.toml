@@ -41,3 +41,12 @@ cdp_url = "ws://127.0.0.1:9222"
 # "chromium": ripiego SOLO all'avvio, con RuntimeWarning e backend/motivo nei metadati
 # (richiede Chromium installato come per il backend stabile).
 fallback = "none"
+
+[api]
+# `lyra api` (HTTP + WebSocket, docs/API.md). Default: solo localhost.
+# Per LAN/Tailscale: host = "0.0.0.0" + api_key. Mai esporre la porta su Internet.
+enabled = true
+host = "127.0.0.1"
+port = 8787
+api_key = ""           # vuota = nessuna auth; es. python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+allowed_origins = []   # origin esatti per una GUI su altro host; mai "*"

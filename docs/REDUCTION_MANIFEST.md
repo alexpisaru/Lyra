@@ -103,3 +103,14 @@ README, NOTICE e documenti operativi. Invariati di proposito: package Python
 `openjarvis`, classi `Jarvis*`, variabili d'ambiente `OPENJARVIS_*`/`JARVIS_*`,
 hostname interni del probe browser, prefisso dei file temporanei del vault,
 attribuzione upstream, LICENSE e storico di validazione.
+
+## Incremento 0.3.0 — Lyra API
+
+Nuovo modulo runtime: `src/openjarvis/api.py` (41 moduli). Modificati:
+`core/config.py` (sezione `[api]`), `cli/__init__.py` (comando `api`),
+`pyproject.toml` (versione 0.3.0, extra `api`, dipendenze test in `dev`), i tre
+`config/lite*.toml` (sezione `[api]`, default localhost). Nuovi file:
+`config/lyra-api.service`, `scripts/api_smoke.py`, `tests/test_api.py`,
+`docs/API.md`. Nessuna modifica ad agente, executor, pack, router, memoria,
+vault, browser o guard di sicurezza. Dipendenze nuove solo nell'extra `api`:
+`fastapi`, `uvicorn`, `websockets` (pydantic/starlette transitivi).

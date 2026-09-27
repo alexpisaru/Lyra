@@ -1,4 +1,4 @@
-# Lyra 0.2.1
+# Lyra 0.3.0
 
 **Lyra** è un assistente personale locale per un CT Linux (Proxmox LXC,
 Debian/Ubuntu) con Ollama e `openbmb/minicpm5-2b:q8_0`. Il runtime, **Lyra Core**,
@@ -28,6 +28,10 @@ Richiesta ─> router deterministico ─> chat | general | files | memory | know
                                 MiniCPM5 2B (Ollama remoto) ─> ToolExecutor
 ```
 
+Da 0.3.0 **Lyra API** (`lyra api`, HTTP + WebSocket, [docs/API.md](docs/API.md))
+espone lo stesso runtime alla futura GUI/PWA: `JarvisSystem.ask` è l'unico
+percorso agentico, gli eventi WebSocket vengono dall'EventBus del runtime.
+
 **LYRA CORE 0.2.1 — TARGET LINUX CT: VERIFIED** (Proxmox LXC, Debian 13 trixie,
 Python 3.13.5, glibc 2.41, SQLite 3.46.1/FTS5, Playwright 1.63.0; Ollama remoto
 `192.168.1.252:11434`, `openbmb/minicpm5-2b:q8_0`). Dettagli in [docs/VALIDATION.md](docs/VALIDATION.md).
@@ -38,6 +42,7 @@ Python 3.13.5, glibc 2.41, SQLite 3.46.1/FTS5, Playwright 1.63.0; Ollama remoto
 | Modello reale (calculator, memory, knowledge, browser) | **VERIFIED**: live acceptance 9/9; la prosa di MiniCPM a volte riassume male un risultato tool corretto |
 | Browser Chromium | **VERIFIED, stabile/predefinito**: probe PASS, smoke PASS, nessun fallback |
 | Browser Obscura v0.2.3 | **EXPERIMENTAL**, non collaudato sul CT; su Windows il probe di intercettazione fallisce |
+| Lyra API 0.3.0 | Test automatici e smoke reale su Windows (runtime sul PC, Ollama sul CT); **NOT VERIFIED ON TARGET LINUX CT** |
 
 ## Memory vs Knowledge
 
@@ -111,7 +116,7 @@ Node o Obsidian. Il modello resta nel CT Ollama: Lyra non scarica modelli.
    ```
 
    In alternativa `python -m build --sdist` sul PC e `tar -xzf
-   lyra_core-0.2.1.tar.gz -C /opt/lyra --strip-components=1` sul CT.
+   lyra_core-0.3.0.tar.gz -C /opt/lyra --strip-components=1` sul CT.
 
 2. Come root nel CT:
 
@@ -191,10 +196,11 @@ Script separato, non installa nulla. Richiede l'extra dev per i test e, per il
 browser, Chromium già installato **come utente `lyra`** (README, sezione Browser):
 
 ```bash
-runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev]'
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev,browser,api]'
 ```
 
-Collaudo completo, quello eseguito con successo sul CT target:
+Con l'extra `api` la suite include anche i test di Lyra API (senza, vengono
+saltati). Collaudo completo, quello eseguito con successo sul CT target:
 
 ```bash
 runuser -u lyra -- bash -c '
@@ -212,12 +218,22 @@ Esegue suite completa (su Linux girano anche i test symlink/hardlink/FIFO),
 `check`, probe e smoke Chromium e `scripts/live_acceptance.py` con il modello
 reale su un vault temporaneo. Procedura completa: [docs/SERVER_ACCEPTANCE.md](docs/SERVER_ACCEPTANCE.md).
 
-### Servizio systemd
+### Lyra API e servizio systemd
 
-Lyra Core oggi è una CLI (`ask`, `chat`, `check`): non esiste un daemon o
-un'API persistente da tenere in esecuzione, quindi **non c'è un `lyra.service`**.
-Verrà aggiunto insieme a Lyra API. L'unica unità inclusa è
-`config/obscura.service`, per il backend browser sperimentale.
+`lyra api` è il primo processo persistente: server HTTP + WebSocket sopra lo
+stesso runtime. Endpoint, eventi, auth e sicurezza in [docs/API.md](docs/API.md).
+
+```bash
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[browser,api]'
+runuser -u lyra -- /opt/lyra/.venv/bin/lyra --config /opt/lyra/config/lite-chromium.toml api
+curl http://127.0.0.1:8787/api/status
+```
+
+Default in ascolto solo su `127.0.0.1:8787`. Per LAN/Tailscale impostare in
+`[api]` `host = "0.0.0.0"` e una `api_key`; mai aprire la porta su Internet.
+Servizio: `config/lyra-api.service` (utente `lyra`, restart on-failure), da
+installare a mano (vedi [docs/SERVER_ACCEPTANCE.md](docs/SERVER_ACCEPTANCE.md)).
+`lyra ask`/`chat`/`check` restano CLI e non richiedono il servizio.
 
 ## Browser (opzionale)
 
@@ -320,7 +336,7 @@ with Jarvis(config_path="config/lite.toml") as jarvis:
 ## Sviluppo
 
 ```bash
-python -m pip install '.[dev]'
+python -m pip install '.[dev]'     # include le dipendenze dei test API
 python -m pytest -q -rs
 python -m ruff check src tests scripts
 python -m build
@@ -333,6 +349,6 @@ non usato sul CT dove si passa `--config`), `OPENJARVIS_SSRF_FAIL_OPEN`,
 `JARVIS_NUM_CTX`, e le variabili dei test `JARVIS_BROWSER_SMOKE`/`JARVIS_CDP_URL`.
 
 Documenti: [VALIDATION](docs/VALIDATION.md) (risultati reali),
-[BROWSER](docs/BROWSER.md), [SERVER_ACCEPTANCE](docs/SERVER_ACCEPTANCE.md),
+[API](docs/API.md), [BROWSER](docs/BROWSER.md), [SERVER_ACCEPTANCE](docs/SERVER_ACCEPTANCE.md),
 [LITE_PLAN](docs/LITE_PLAN.md), [REDUCTION_MANIFEST](docs/REDUCTION_MANIFEST.md).
 Licenza Apache 2.0 upstream conservata (LICENSE, NOTICE).

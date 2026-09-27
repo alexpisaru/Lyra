@@ -135,3 +135,4 @@ oj-debug.*.json
 # Lyra acceptance output
 acceptance-*/
 live-acceptance.json
+api-smoke.json

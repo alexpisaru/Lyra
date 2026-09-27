@@ -194,6 +194,33 @@ def check(config, probe_browser):
         raise click.ClickException("controlli falliti: " + ", ".join(problems))
 
 
+@cli.command()
+@click.pass_obj
+def api(config):
+    """Avvia Lyra API (HTTP + WebSocket) sopra lo stesso runtime. Richiede [api] enabled=true."""
+    if not config.api.enabled:
+        raise click.ClickException("Lyra API disattivata: impostare [api] enabled = true nel config")
+    try:
+        from openjarvis.api import serve
+    except ImportError as exc:
+        raise click.ClickException(
+            f"Dipendenze API mancanti ({exc.name}): pip install '.[api]'"
+        ) from exc
+    loopback = config.api.host in ("127.0.0.1", "::1", "localhost")
+    click.echo(
+        f"Lyra API su http://{config.api.host}:{config.api.port} "
+        f"(auth: {'API key' if config.api.api_key else 'disattivata'})",
+        err=True,
+    )
+    if not loopback and not config.api.api_key:
+        click.echo(
+            "ATTENZIONE: API in ascolto oltre localhost senza api_key. Usare solo su "
+            "LAN/Tailscale fidata; mai esporre la porta su Internet.",
+            err=True,
+        )
+    serve(config)
+
+
 def main():
     cli()
 

@@ -1,0 +1,28 @@
+[Unit]
+Description=Lyra Core API (HTTP + WebSocket)
+Documentation=file:///opt/lyra/docs/API.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lyra
+Group=lyra
+WorkingDirectory=/opt/lyra
+# Chromium from `playwright install` lives in the lyra user's cache.
+Environment=HOME=/var/lib/lyra
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/lyra/.venv/bin/lyra --config /opt/lyra/config/lite-chromium.toml api
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+# The next four need mount namespaces. If the unit fails with status=226/NAMESPACE
+# (LXC without "nesting"), enable nesting on the CT or comment out these lines.
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/srv/lyra-vault /srv/lyra-state /srv/lyra-workspace
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

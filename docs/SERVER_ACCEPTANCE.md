@@ -11,7 +11,7 @@ FTS5, Playwright 1.63.0, Chromium). Esito: tutti i passi PASS; numeri in
 Prerequisiti, una volta sola:
 
 ```bash
-runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev,browser]'
+runuser -u lyra -- /opt/lyra/.venv/bin/python -m pip install '/opt/lyra[dev,browser,api]'
 /opt/lyra/.venv/bin/python -m playwright install-deps chromium
 runuser -u lyra -- /opt/lyra/.venv/bin/python -m playwright install chromium
 ```
@@ -63,6 +63,52 @@ Esito sul CT target: unit-tests 269 passed, 1 skipped (solo lo smoke opt-in),
 0 failed; `lyra-check` PASS; `browser-probe-chromium` PASS; `browser-smoke-chromium`
 PASS (1 passed in 4.81 s); `live-model` PASS (9/9); finale
 `COLLAUDO: tutti i passi PASS`.
+
+## Lyra API 0.3.0 (NOT VERIFIED ON TARGET LINUX CT)
+
+Con l'extra `api` installato, la suite dello script sopra include i test API
+(attesi sul CT: 300 passed, 1 skipped). Poi, come root, prova manuale e servizio.
+
+1. Avvio manuale in primo piano (terminale 1), come `lyra`:
+
+   ```bash
+   runuser -u lyra -- /opt/lyra/.venv/bin/lyra --config /opt/lyra/config/lite-chromium.toml api
+   ```
+
+2. Smoke reale (terminale 2), con una nota del vault che contiene la parola
+   indicata (default `ametista`, es. `collaudo-lyra.md`):
+
+   ```bash
+   runuser -u lyra -- bash -c 'cd /opt/lyra && .venv/bin/python scripts/api_smoke.py --note-term ametista --out /tmp/api-smoke.json'
+   ```
+
+   Verifica `/api/status`, connessione WebSocket, chat calculator (391) con
+   eventi reali `thinking → tool_started → tool_finished → response → idle`,
+   chat knowledge (`notes_search`), `/api/knowledge/search`, reset. Atteso
+   `PASSED 7 of 7`. Con `api_key` passarla solo via ambiente:
+   `LYRA_API_KEY=... .venv/bin/python scripts/api_smoke.py`.
+   Fermare poi il server del terminale 1 (Ctrl+C).
+
+3. Servizio systemd (dopo il passo 2 riuscito):
+
+   ```bash
+   cp /opt/lyra/config/lyra-api.service /etc/systemd/system/lyra-api.service
+   systemctl daemon-reload
+   systemctl enable --now lyra-api
+   systemctl status lyra-api
+   journalctl -u lyra-api -n 50 --no-pager
+   curl http://127.0.0.1:8787/api/status
+   ```
+
+   Se l'unità fallisce con `status=226/NAMESPACE` (LXC senza nesting): abilitare
+   nesting sul CT oppure commentare `PrivateTmp`/`ProtectSystem`/`ProtectHome`/
+   `ReadWritePaths` nel file e ripetere `daemon-reload`.
+
+4. LAN/Tailscale: in `config/lite-chromium.toml` impostare `host = "0.0.0.0"` e
+   `api_key` (`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`),
+   `systemctl restart lyra-api`, poi dal PC
+   `curl -H "Authorization: Bearer <key>" http://<ip-ct>:8787/api/status` (200) e
+   senza header (401). Nessun port forwarding sul router.
 
 ## Manuale (vault reale e Obsidian)
 
