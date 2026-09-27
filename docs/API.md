@@ -1,4 +1,4 @@
-# Lyra API 0.3.0
+# Lyra API 0.3.1
 
 Livello HTTP + WebSocket sottile sopra Lyra Core, per la futura GUI/PWA.
 **Non è un secondo runtime**: ogni chat passa da `JarvisSystem.ask`, la stessa
@@ -85,7 +85,7 @@ H1 dopo il frontmatter, altrimenti il nome file. Nessun parametro: non è un
 file browser generico. Le protezioni sono quelle del vault, non duplicate:
 `..`, path assoluti, drive/UNC, backslash, file nascosti (`.obsidian/`), non
 `.md`, symlink/hard link → **400**; nota assente → **404**; vault disattivato → **404**.
-Nessun endpoint di scrittura in 0.3.0.
+Nessun endpoint di scrittura in 0.3.1.
 
 ## WebSocket `/ws`
 

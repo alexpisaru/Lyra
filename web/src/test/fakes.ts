@@ -5,7 +5,7 @@ import type { LyraEvent, LyraStatus } from '../types/api'
 export const STATUS: LyraStatus = {
   status: 'ok',
   name: 'Lyra',
-  version: '0.3.0',
+  version: '0.3.1',
   state: 'idle',
   busy: false,
   model: { provider: 'ollama', model: 'openbmb/minicpm5-2b:q8_0', reachable: true },

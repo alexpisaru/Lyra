@@ -2,8 +2,8 @@
 
 Interfaccia web/PWA di Lyra, in `web/`, separata da `src/openjarvis/`. Build
 statica (React 19 + Vite 8 + TypeScript + Three.js), servita da Caddy sul CT.
-Usa solo gli endpoint di Lyra API 0.3.0; nessun endpoint nuovo, nessuna logica
-agentica nel frontend. Lyra Core resta 0.3.0.
+Usa solo gli endpoint di Lyra API 0.3.1 (0.3.0 + `GET /api/knowledge/notes`); nessuna logica
+agentica nel frontend.
 
 ```
 Browser / iPhone (LAN o Tailscale)

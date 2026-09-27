@@ -17,7 +17,7 @@ Solo orb e lista note di Brain; resto della GUI invariato.
 | Sequenza reale `/ws` registrata dalla pagina (chat calculator con MiniCPM) | idle → thinking → using_tool + impulso out → impulso in (+457 ms) → thinking → onda response → response → idle |
 | Brain | elenco completo all'apertura, ricerca vuota; desktop e iPhone (lista → nota → indietro) |
 
-Il nuovo endpoint `GET /api/knowledge/notes` richiede Lyra Core aggiornato sul CT:
+Il nuovo endpoint `GET /api/knowledge/notes` richiede Lyra Core **0.3.1** sul CT:
 finché il CT resta alla versione precedente, Brain mostra un errore di caricamento
 dell'elenco con l'invito ad aggiornare Lyra Core (la ricerca continua a funzionare).
 NOT VERIFIED ON TARGET LINUX CT.

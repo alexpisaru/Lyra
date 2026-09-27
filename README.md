@@ -1,4 +1,4 @@
-# Lyra 0.3.0
+# Lyra 0.3.1
 
 **Lyra** è un assistente personale locale per un CT Linux (Proxmox LXC,
 Debian/Ubuntu) con Ollama e `openbmb/minicpm5-2b:q8_0`. Il runtime, **Lyra Core**,
@@ -42,7 +42,7 @@ Python 3.13.5, glibc 2.41, SQLite 3.46.1/FTS5, Playwright 1.63.0; Ollama remoto
 | Modello reale (calculator, memory, knowledge, browser) | **VERIFIED**: live acceptance 9/9; la prosa di MiniCPM a volte riassume male un risultato tool corretto |
 | Browser Chromium | **VERIFIED, stabile/predefinito**: probe PASS, smoke PASS, nessun fallback |
 | Browser Obscura v0.2.3 | **EXPERIMENTAL**, non collaudato sul CT; su Windows il probe di intercettazione fallisce |
-| Lyra API 0.3.0 | In esercizio sul CT come `lyra-api.service` (verifica riportata dall'utente) |
+| Lyra API 0.3.0 → 0.3.1 | 0.3.0 in esercizio sul CT come `lyra-api.service` (verifica riportata dall'utente); 0.3.1 aggiunge `GET /api/knowledge/notes`, NOT VERIFIED ON TARGET LINUX CT |
 | Lyra Web 0.4.0 (PWA) | Verificata su Windows con la Lyra API reale: build/lint/32 test, desktop e viewport iPhone, service worker e offline in Chromium; **NOT VERIFIED ON TARGET LINUX CT** (Caddy non ancora installato) |
 
 ## Lyra Web (PWA) 0.4.0
@@ -131,7 +131,7 @@ Node o Obsidian. Il modello resta nel CT Ollama: Lyra non scarica modelli.
    ```
 
    In alternativa `python -m build --sdist` sul PC e `tar -xzf
-   lyra_core-0.3.0.tar.gz -C /opt/lyra --strip-components=1` sul CT.
+   lyra_core-0.3.1.tar.gz -C /opt/lyra --strip-components=1` sul CT.
 
 2. Come root nel CT:
 

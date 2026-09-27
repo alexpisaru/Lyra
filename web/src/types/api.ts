@@ -1,4 +1,4 @@
-// Mirrors the Lyra API 0.3.0 contract (src/openjarvis/api.py, docs/API.md).
+// Mirrors the Lyra API 0.3.1 contract (src/openjarvis/api.py, docs/API.md).
 
 export type Pack = 'auto' | 'chat' | 'general' | 'files' | 'memory' | 'knowledge' | 'browser'
 

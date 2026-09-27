@@ -60,7 +60,7 @@ describe('Status', () => {
     await waitFor(() => expect(within(panel).getByText('openbmb/minicpm5-2b:q8_0')).toBeInTheDocument())
     expect(within(panel).getByText('Ollama')).toBeInTheDocument()
     expect(within(panel).getByText('Chromium')).toBeInTheDocument()
-    expect(within(panel).getByText('0.3.0')).toBeInTheDocument()
+    expect(within(panel).getByText('0.3.1')).toBeInTheDocument()
     fireEvent.pointerDown(document.body)
     expect(pill).toHaveAttribute('aria-expanded', 'false')
     await user.click(pill)
