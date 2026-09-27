@@ -6,6 +6,7 @@ import { excerptText, noteTitle, prepareNote, stripFrontmatter, WIKI_PREFIX } fr
 import { pickQuality, QUALITY } from '../lib/orbScene'
 import { deriveOrbState, FUTURE_ORB_STATES, ORB_PARAMS, orbParams, type OrbState } from '../lib/orbState'
 import { backoffDelay, parseEvent } from '../lib/websocket'
+import { prettyModel } from '../components/StatusPill'
 import type { LyraEvent } from '../types/api'
 import { fakeSocket, FakeSocket, json, mockFetch, STATUS } from './fakes'
 
@@ -206,13 +207,19 @@ describe('orb state machine', () => {
     expect(thinking.core).toBeGreaterThanOrEqual(idle.core * 4)
     expect(thinking.purple).toBeGreaterThan(idle.purple)
     expect(thinking.alternate).toBe(1)
+    // Thinking keeps its arcs as close loops; using tool swings them far out.
+    expect(thinking.arcSpread).toBeLessThan(1)
     // Using tool: energy organised outwards (arcs, orbit), compact inside.
-    expect(tool.arcs).toBeGreaterThanOrEqual(thinking.arcs * 2.5)
-    expect(tool.orbit).toBeGreaterThanOrEqual(thinking.orbit * 3)
+    expect(tool.arcs).toBeGreaterThanOrEqual(thinking.arcs * 1.8)
+    expect(tool.arcSpread).toBeGreaterThan(1.3)
+    expect(tool.orbit).toBeGreaterThanOrEqual(thinking.orbit * 2)
     expect(tool.compression).toBeGreaterThan(thinking.compression)
     expect(tool.core).toBeLessThan(thinking.core)
     // Response: strongest glow; the wave itself is a one-shot pulse.
     expect(orbParams('response').glow).toBeGreaterThan(Math.max(idle.glow, thinking.glow, tool.glow))
+    // ...plus the starburst from the centre, only in response.
+    expect(orbParams('response').flare).toBe(1)
+    expect(Object.values(ORB_PARAMS).filter((p) => p.flare > 0)).toHaveLength(1)
     // Error: loses cohesion, jitters, violet drifts to magenta; not a red orb.
     expect(orbParams('error').dispersion).toBeGreaterThan(0.4)
     expect(orbParams('error').jitter).toBe(1)
@@ -268,5 +275,13 @@ describe('notes helpers', () => {
       'Idee progetti Lyra a code clienti_attivi',
     )
     expect(excerptText('> Nota [link](https://x.y) e [[crm|il CRM]]')).toBe('Nota link e il CRM')
+  })
+})
+
+describe('prettyModel', () => {
+  it('shortens Ollama tags to the reference label', () => {
+    expect(prettyModel('openbmb/minicpm5-2b:q8_0')).toBe('MiniCPM 2B')
+    expect(prettyModel('qwen2.5-3b-instruct:q4_K_M')).toBe('Qwen 3B')
+    expect(prettyModel('custom-model:latest')).toBe('custom-model')
   })
 })

@@ -33,7 +33,7 @@ function setup(routes: Parameters<typeof mockFetch>[0] = {}) {
 }
 
 describe('Home', () => {
-  it('is clean: orb, nav and a collapsed status only', async () => {
+  it('is clean: orb, nav and the status card only', async () => {
     const { orbState } = setup()
     expect(document.querySelector('.orb-layer')).toBeInTheDocument()
     expect(orbState()).toBe('offline') // until /ws connects
@@ -45,37 +45,59 @@ describe('Home', () => {
     expect(screen.queryByPlaceholderText('Come posso aiutarti?')).not.toBeInTheDocument()
     expect(screen.queryByText(/come posso aiutarti/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/secondo cervello/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /dettagli stato/i })).toHaveAttribute('aria-expanded', 'false')
+    // Wide screens show the reference's status card open; no states gallery in a small viewport.
+    expect(screen.getByRole('button', { name: /dettagli stato/i })).toHaveAttribute('aria-expanded', 'true')
+  })
+})
+
+describe('States gallery', () => {
+  it('shows the six main states beside the hero on large screens', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
+    setup()
+    const gallery = screen.getByRole('complementary', { name: 'Stati principali' })
+    expect(within(gallery).getAllByRole('listitem').map((li) => li.querySelector('.gallery-name')?.textContent)).toEqual([
+      'Idle',
+      'Thinking',
+      'Using tool',
+      'Response',
+      'Speaking',
+      'Interrupted',
+    ])
+    expect(within(gallery).getByText('interrotto')).toBeInTheDocument()
   })
 })
 
 describe('Status', () => {
-  it('loads /api/status and expands on tap, closes on outside tap and Esc', async () => {
-    const { user, fetchMock } = setup()
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/status', expect.anything()))
-    const pill = screen.getByRole('button', { name: /dettagli stato/i })
-    await user.click(pill)
-    expect(pill).toHaveAttribute('aria-expanded', 'true')
+  it('shows the reference status card on wide screens', async () => {
+    const { user, connect } = setup()
+    connect()
+    const head = await screen.findByRole('button', { name: /Lyra attiva\. Dettagli stato/ })
+    expect(head).toHaveAttribute('aria-expanded', 'true')
     const panel = screen.getByRole('region', { name: 'Stato di Lyra' })
-    await waitFor(() => expect(within(panel).getByText('openbmb/minicpm5-2b:q8_0')).toBeInTheDocument())
-    expect(within(panel).getByText('Ollama')).toBeInTheDocument()
-    expect(within(panel).getByText('Chromium')).toBeInTheDocument()
-    expect(within(panel).getByText('0.3.1')).toBeInTheDocument()
+    await waitFor(() => expect(within(panel).getByText('MiniCPM 2B (Ollama)')).toBeInTheDocument())
+    expect(within(panel).getByText('Browser: Chromium')).toBeInTheDocument()
+    expect(within(panel).getByText('Memoria: attiva')).toBeInTheDocument()
+    expect(within(panel).getByText('Knowledge: attivo')).toBeInTheDocument()
+    expect(head).toHaveAttribute('title', expect.stringContaining('openbmb/minicpm5-2b:q8_0'))
+    // An outside tap does not close it on wide screens; the chevron and Esc do.
     fireEvent.pointerDown(document.body)
-    expect(pill).toHaveAttribute('aria-expanded', 'false')
-    await user.click(pill)
+    expect(head).toHaveAttribute('aria-expanded', 'true')
+    await user.click(head)
+    expect(head).toHaveAttribute('aria-expanded', 'false')
+    await user.click(head)
     await user.keyboard('{Escape}')
-    expect(pill).toHaveAttribute('aria-expanded', 'false')
+    expect(head).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('expands on hover where a fine pointer can hover', async () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('hover'), addEventListener() {}, removeEventListener() {} }))
+  it('is a compact pill on phones: tap opens, outside tap closes', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
     const { user } = setup()
-    const pill = screen.getByRole('button', { name: /dettagli stato/i })
-    await user.hover(pill)
-    expect(pill).toHaveAttribute('aria-expanded', 'true')
-    await user.unhover(pill.parentElement!)
-    expect(pill).toHaveAttribute('aria-expanded', 'false')
+    const head = screen.getByRole('button', { name: /dettagli stato/i })
+    expect(head).toHaveAttribute('aria-expanded', 'false')
+    await user.click(head)
+    expect(head).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.pointerDown(document.body)
+    expect(head).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('shows a sober offline state when Lyra is unreachable', async () => {
@@ -245,7 +267,7 @@ describe('Live runtime', () => {
 
     expect(document.querySelector('.nav-badge')).toBeInTheDocument()
     await nav('Activity')
-    const timeline = screen.getByRole('list')
+    const timeline = document.querySelector('.timeline') as HTMLElement
     expect(within(timeline).getAllByRole('listitem').map((li) => li.querySelector('.timeline-title')?.textContent)).toEqual([
       'Connessa',
       'Thinking',

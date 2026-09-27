@@ -24,8 +24,7 @@ function Icon({ size = 22, children, ...rest }: IconProps & { children: React.Re
 
 export const HomeIcon = (p: IconProps) => (
   <Icon {...p}>
-    <circle cx="12" cy="12" r="7.5" />
-    <path d="M6.2 14.2c2.4 1.4 8.8 1.2 11.6-1.2" opacity="0.55" />
+    <circle cx="12" cy="12" r="8" />
   </Icon>
 )
 
@@ -49,8 +48,21 @@ export const ActivityIcon = (p: IconProps) => (
 )
 
 export const SendIcon = (p: IconProps) => (
-  <Icon {...p} strokeWidth={1.8}>
-    <path d="M5 19 19 5M10 5h9v9" />
+  <Icon {...p} strokeWidth={1.7}>
+    <path d="M20 4 9.6 14.4" />
+    <path d="M20 4 13.4 20l-3.8-5.6L4 10.6 20 4Z" />
+  </Icon>
+)
+
+export const PaperclipIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m19.5 11.6-7.3 7.3a4.6 4.6 0 0 1-6.5-6.5l7.8-7.8a3.1 3.1 0 0 1 4.4 4.4l-7.8 7.8a1.5 1.5 0 0 1-2.2-2.2l7-7" />
+  </Icon>
+)
+
+export const ChevronIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m9.5 6 6 6-6 6" />
   </Icon>
 )
 

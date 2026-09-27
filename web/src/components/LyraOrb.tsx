@@ -109,8 +109,8 @@ export function LyraOrb({ state, frame, signal }: LyraOrbProps) {
         <div
           className="orb-fallback"
           style={{
-            width: `calc(${frame.size} * min(100vw, 100dvh))`,
-            transform: `translate(calc(${frame.x} * 50vw), calc(${-frame.y} * 50dvh))`,
+            width: `calc(${frame.size} * 100cqmin)`,
+            transform: `translate(calc(${frame.x} * 50cqw), calc(${-frame.y} * 50cqh))`,
             opacity: 0.4 + frame.presence * 0.6,
           }}
         />

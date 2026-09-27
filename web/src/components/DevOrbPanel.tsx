@@ -1,5 +1,5 @@
 import './DevOrbPanel.css'
-import { LIVE_ORB_STATES, type OrbPulse, type OrbState } from '../lib/orbState'
+import { FUTURE_ORB_STATES, LIVE_ORB_STATES, type OrbPulse, type OrbState } from '../lib/orbState'
 
 interface DevOrbPanelProps {
   forced: OrbState | null
@@ -24,6 +24,13 @@ export default function DevOrbPanel({ forced, live, onForce, onPulse }: DevOrbPa
           live
         </button>
         {LIVE_ORB_STATES.map((state) => (
+          <button key={state} type="button" aria-pressed={forced === state} onClick={() => onForce(state)}>
+            {state}
+          </button>
+        ))}
+      </div>
+      <div title="Preview only: the live runtime never produces voice states">
+        {FUTURE_ORB_STATES.map((state) => (
           <button key={state} type="button" aria-pressed={forced === state} onClick={() => onForce(state)}>
             {state}
           </button>

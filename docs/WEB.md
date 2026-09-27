@@ -21,11 +21,13 @@ web/
   vite.config.ts        PWA (manifest + service worker), proxy dev /api e /ws
   public/               favicon.svg, icone PNG (generate da scripts/make-icons.mjs)
   src/
-    App.tsx             viste, framing dell'orb, caption Home
-    components/         LyraOrb, StatusPill, BottomNav, ChatView, ChatComposer,
-                        BrainView, NoteMarkdown, ActivityView, icons
+    App.tsx             hero incorniciato, viste, framing dell'orb, colonna stati
+    components/         LyraOrb, StatusPill (card di stato), StateGallery («Stati
+                        principali»), Backdrop (onde nebulose), BottomNav, ChatView,
+                        ChatComposer, BrainView, NoteMarkdown, ActivityView, icons
     hooks/              useLyraState (status + /ws + activity), useLyraWebSocket,
-                        useChat (conversazione a livello app), useViewport (tastiera iOS)
+                        useChat (conversazione a livello app), useViewport (tastiera iOS),
+                        useElementSize (dimensioni hero, media query)
     lib/                api.ts (unico client HTTP), websocket.ts (unico client /ws),
                         orbState.ts (state machine), orbScene.ts + orbShaders.ts (WebGL),
                         activity.ts (reducer timeline), notes.ts (Markdown Obsidian), frames.ts
@@ -35,12 +37,20 @@ web/
 
 ## Comportamento
 
-- **Home**: solo orb, navigazione in basso e pill di stato. Nessun input, nessun
-  titolo. Sotto l'orb compare una parola discreta solo se Lyra non è in attesa
-  («Elabora», «Usa uno strumento», «Lyra non raggiungibile»).
+L'immagine di riferimento (hero + «Stati principali» + Home/Chat) è la fonte visiva
+canonica. Layout: un **hero** scuro incorniciato (bordo cyan sottile, angoli
+arrotondati, onde nebulose blu sfocate) contiene orb, card di stato, viste e
+navigazione; da 1200×620 px in su compare a destra la colonna **Stati principali**.
+Sotto quella soglia l'hero occupa tutto lo schermo (su telefono senza cornice).
+
+- **Home**: orb grande, protagonista, leggermente sopra il centro; card di stato in
+  alto a destra; navigazione in basso. Nessun input, nessun titolo. Sotto l'orb
+  compare una parola discreta solo se Lyra non è in attesa («Elabora», «Usa uno
+  strumento», «Lyra non raggiungibile»).
 - **Chat**: il composer appare solo qui, placeholder «Come posso aiutarti?».
   `POST /api/chat` con `pack: "auto"`; `+` apre il selettore pack, libro e globo
-  sono scorciatoie Knowledge/Browser (non upload: l'API non ne ha). Risposta di
+  sono scorciatoie Knowledge/Browser. La graffetta del riferimento è omessa: l'API
+  non supporta upload. Orb medio in alto, composer grande a vetro con invio blu. Risposta di
   Lyra in primo piano (Markdown sicuro), domanda dell'utente discreta, strumenti
   usati in una riga minima (`calculator ✓`). La conversazione vive a livello app:
   passando a Home/Brain non si perde; «Nuova conversazione» chiama `/api/chat/reset`.
@@ -52,60 +62,75 @@ web/
   HTML grezzo mai eseguito, immagini del vault non caricate. Solo lettura.
 - **Activity**: timeline di `/ws` (Thinking, Using tool, Tool completed/failed,
   Response, Errore, connessione) con orario; niente payload o JSON; max 200 righe.
-- **Status**: pill «● Lyra» in alto a destra. Hover (puntatore fine) o tap la
-  espande (≈300 ms, trasformazioni, nessun layout shift): stato, modello, provider,
-  browser, memoria, knowledge, connessione, versione. Tap fuori o Esc chiude.
-  Offline: punto grigio e «Lyra non raggiungibile». Nessuna pagina Status.
+- **Status**: card in alto a destra nell'hero, come nel riferimento: «● Lyra attiva ›»,
+  «MiniCPM 2B (Ollama)» (nome breve dal tag del modello; quello completo, la
+  versione e lo stato della connessione nel tooltip), «Browser: Chromium»,
+  «Memoria: attiva», «Knowledge: attivo», con icone lineari. Aperta di default su
+  schermi larghi (il chevron la chiude); su telefono e in Brain/Activity parte
+  compatta («● Lyra») e si apre al tap; tap fuori o Esc chiude. Offline: punto
+  grigio e «Lyra non raggiungibile». Nessuna pagina Status.
+- **Stati principali** (solo schermi larghi): griglia 2×3 IDLE / THINKING / USING
+  TOOL / RESPONSE / SPEAKING / INTERRUPTED con anteprima viva dell'orb, titolo e
+  sottotitolo italiano; la card dello stato live è evidenziata. È una legenda: le
+  anteprime di speaking/interrupted non significano che Lyra parli (Voice non c'è).
 
 ## Orb (Three.js/WebGL2)
 
-Un solo canvas a tutto schermo per tutta la sessione; cambiando vista cambia solo
-il framing (molto grande in Home, medio-grande e vicino alla conversazione in Chat,
-piccolo segno vivo in alto a sinistra in Brain/Activity), con easing nel render loop.
+Un solo canvas che riempie l'hero per tutta la sessione; cambiando vista cambia solo
+il framing (grande in Home, medio in alto in Chat, piccolo segno vivo in alto a
+sinistra in Brain/Activity), con easing nel render loop. Le anteprime della colonna
+«Stati principali» sono disegnate da **un solo** renderer WebGL aggiuntivo (scissor
+per card, ~30 fps, qualità "mini").
 
-Composizione a strati ("nuvola energetica contenuta in una sfera"), tutti deformati
-dallo stesso campo di rumore (respiro, rigonfiamenti locali, asimmetria):
+Obiettivo dal riferimento: una **massa di energia luminosa** leggibile, non una
+matassa di linee. Luce additiva su canvas trasparente; strati, tutti deformati dallo
+stesso campo (respiro, rigonfiamenti, ritmo, impulsi, onda):
 
-1. **volume interno**: particelle con densità che migra, zone piene e vuote, core pulsante;
-2. **filamenti cyan/bianchi**: curve organiche generate con un cammino a curvatura
-   variabile (mai cerchi massimi), luce che scorre lungo il filamento;
-3. **strato viola/indaco**: meno filamenti, più curvi, che attraversano l'interno,
-   emergono in superficie e a volte escono; intensità indipendente (`purple`);
-4. **nuvola di superficie**: densità e bordo irregolari, zone viola localizzate;
-5. **archi esterni** cyan e viola che escono e rientrano, nascono e svaniscono;
-6. **alone** irregolare che segue l'energia, con macchie viola; stelle lontane.
+1. **guscio**: sfera densa con bordo cyan-bianco intenso e alone del bordo;
+2. **vene luminose**: rete di scariche cyan sulla superficie (tratti brevi con
+   svolte nette), luce che scorre lungo le vene;
+3. **strato viola/indaco**: zone e vene viola strutturali sul bordo e in superficie;
+4. **volume interno**: tante particelle-stella, core che pulsa;
+5. **polvere**: particelle che si staccano dalla superficie;
+6. **archi esterni**: pochi archi sottili ed eleganti (cyan, uno o due viola);
+7. **alone** morbido attorno al bordo, flash di risposta, stelle lontane.
 
 Ogni stato ha obiettivi propri, interpolati in ~450 ms (nessuna geometria ricreata):
-speed, deform, flow, core, purple, alternate, arcs, orbit, compression, dispersion,
-glow, brightness, hueShift, saturation, jitter (`web/src/lib/orbState.ts`).
+speed, deform, flow, core, purple, veins, alternate, arcs, arcSpread, orbit,
+compression, dispersion, glow, brightness, warm, saturation, jitter, rhythm, flare
+(`web/src/lib/orbState.ts`).
 
-| Stato (da `/ws`) | Resa |
+| Stato | Resa |
 |---|---|
-| idle | respiro lento, filamenti che scorrono piano, viola lento ma visibile |
-| thinking | energia interna: flow 5×, core pulsante, viola più presente, alternanza cyan/viola |
-| using_tool | energia verso l'esterno: archi 3×, orbita 3×, interno compresso, dispersione |
-| response | onda dal centro alla superficie (~950 ms), flash cyan/bianco, poi filamenti viola illuminati, lieve espansione |
-| error | coesione persa, jitter, viola verso magenta, alone irregolare (niente orb rosso) |
+| idle | respiro lento e calmo, rete di vene tranquilla, viola visibile |
+| thinking | turbolenza interna, micro-flussi più veloci, viola più leggibile, alternanza cyan/viola, anelli stretti attorno alla sfera |
+| using_tool | energia verso l'esterno: archi ampi e più luminosi, polvere che si allontana, bordo attivo |
+| response | starburst dal centro, alone più intenso, onda di luce dal centro al bordo |
+| error | coesione persa, jitter, tinta verso magenta |
 | offline (`/ws` chiuso) | quasi immobile, desaturato, viola quasi spento |
-| listening / speaking / interrupted | **predisposti, mai attivati** (Voice futura) |
+| speaking / interrupted / listening | **solo anteprime** (colonna stati e pannello DEV); il runtime live non li produce |
+
+Speaking = pulsazione ritmica organica; interrupted = più aspro, coesione persa,
+rosso/magenta/viola.
 
 Eventi one-shot reali: `tool_started` → impulso verso l'esterno; `tool_finished` →
 impulso più morbido verso l'interno (distanziato di ≥450 ms dal primo); `response`
 → onda. Uno strumento veloce (calculator ≈ 50 ms) resta visibile come `using_tool`
 fino a 1,2 s dopo `tool_finished`.
 
-In sviluppo (`npm run dev`) un pannello in alto a sinistra forza ogni stato e lancia
-gli impulsi, per il confronto visivo; non è incluso nella build di produzione
-(verificato: né JS né CSS in `dist`).
+In sviluppo (`npm run dev`) un pannello in alto a sinistra forza ogni stato (anche
+le anteprime voice) e lancia gli impulsi, per il confronto visivo; non è incluso
+nella build di produzione (verificato: né JS né CSS in `dist`).
 
-Prestazioni: qualità adattiva (desktop ≈ 12k superficie + 5k volume + 36 filamenti
-cyan, 16 viola, 10 archi; mobile e dispositivi deboli ridotti; priorità a filamenti
-e strato viola rispetto al numero di particelle),
+Prestazioni: qualità adattiva (desktop ≈ 24k guscio + 4,5k volume + 3,5k polvere,
+56 vene, 14 tratti viola, 10 archi; mobile e dispositivi deboli ridotti),
 devicePixelRatio ≤ 2, riduzione dinamica della risoluzione se i frame sono lenti,
-pausa quando la pagina è nascosta, `prefers-reduced-motion` (orb presente, ~20 fps,
-movimento ridotto al 12%), Three.js in un chunk separato caricato dopo la UI.
+pausa quando la pagina è nascosta, `prefers-reduced-motion` (orb presente,
+movimento ridotto), Three.js in un chunk separato caricato dopo la UI.
 Cleanup completo (rAF, geometrie, materiali, renderer, `forceContextLoss`, listener).
-Senza WebGL2 compare un orb CSS statico.
+Senza WebGL2 compare un orb CSS statico, incorniciato nell'hero.
+Gli shader evitano `pow()` con base negativa e `atan()` (comportamento non definito
+o impreciso su alcune GPU/SwiftShader: producevano bande rettangolari nell'alone).
 
 ## PWA
 
@@ -170,7 +195,10 @@ ancora una schermata per inserirla (il client è predisposto: `localStorage`
 - Caddyfile non eseguito in questo ambiente (Caddy non installato qui): la stessa
   topologia (statico + proxy `/api` e `/ws` con Host preservato) è stata provata
   con il proxy di Vite verso la Lyra API reale.
-- Nessun elenco completo delle note: l'API offre solo ricerca (max 3 risultati).
+- La replica del riferimento è stata confrontata con screenshot Chromium con
+  rendering software (SwiftShader); su GPU reale luminosità e bloom possono
+  risultare leggermente diversi. Il riferimento è un'illustrazione: l'orb è
+  un'approssimazione in tempo reale, non una copia pixel per pixel.
 - Nessuna conferma click/type del browser via UI (l'API le rifiuta), nessuna
   scrittura note, nessuno streaming token, nessuna schermata per l'API key.
 - iPhone reale non provato: verificati viewport iPhone emulati (portrait e

@@ -1,12 +1,15 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityView } from './components/ActivityView'
+import { Backdrop } from './components/Backdrop'
 import { BottomNav, type View } from './components/BottomNav'
 import { BrainView } from './components/BrainView'
 import { ChatView } from './components/ChatView'
 import { LyraOrb } from './components/LyraOrb'
+import { StateGallery } from './components/StateGallery'
 import { StatusPill } from './components/StatusPill'
 import { useChat } from './hooks/useChat'
 import { useLyraState, type LyraStateOptions, type OrbSignal } from './hooks/useLyraState'
+import { useElementSize, useMedia } from './hooks/useElementSize'
 import { useViewport } from './hooks/useViewport'
 import { captionTop, orbFrame } from './lib/frames'
 import { ORB_LABEL, type OrbState } from './lib/orbState'
@@ -27,7 +30,12 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   const lyra = useLyraState(live)
   const chat = useChat()
   const viewport = useViewport()
+  const heroRef = useRef<HTMLDivElement>(null)
+  const hero = useElementSize(heroRef)
+  // The reference's "Stati principali" column, on screens wide enough for it.
+  const showGallery = useMedia('(min-width: 1200px) and (min-height: 620px)')
   const [view, setView] = useState<View>(initialView)
+  const panelView = view === 'brain' || view === 'activity'
   const [seenActivity, setSeenActivity] = useState(0)
   const [forcedOrb, setForcedOrb] = useState<OrbState | null>(null)
   const [devSignal, setDevSignal] = useState<OrbSignal | null>(null)
@@ -48,8 +56,8 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   }, [])
 
   const frame = useMemo(
-    () => orbFrame(view, viewport.width, viewport.height),
-    [view, viewport.width, viewport.height],
+    () => orbFrame(view, hero.width, hero.height),
+    [view, hero.width, hero.height],
   )
 
   const orbState = forcedOrb ?? lyra.orbState
@@ -70,9 +78,11 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
       className="app"
       data-view={view}
       data-keyboard={viewport.keyboard > 0 || undefined}
+      data-gallery={showGallery || undefined}
       style={{ '--kb': `${viewport.keyboard}px` } as React.CSSProperties}
     >
-      <div className="backdrop" aria-hidden="true" />
+      <div className="hero" ref={heroRef}>
+      <Backdrop />
       <LyraOrb state={orbState} frame={frame} signal={signal} />
       {DevOrbPanel ? (
         <Suspense fallback={null}>
@@ -84,7 +94,13 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
           />
         </Suspense>
       ) : null}
-      <StatusPill status={lyra.status} reachable={lyra.reachable} connection={lyra.connection} />
+      <StatusPill
+        key={panelView ? 'compact' : 'card'}
+        compact={panelView}
+        status={lyra.status}
+        reachable={lyra.reachable}
+        connection={lyra.connection}
+      />
 
       <main className="stage">
         {view === 'home' ? (
@@ -93,7 +109,7 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
             <p
               className="home-caption"
               data-visible={Boolean(caption)}
-              style={{ top: captionTop(frame, viewport.width, viewport.height) }}
+              style={{ top: captionTop(frame, hero.width, hero.height) }}
               aria-live="polite"
             >
               {caption ?? ''}
@@ -108,6 +124,8 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
       </main>
 
       <BottomNav view={view} onChange={navigate} activityBadge={activityCount > seenActivity} />
+      </div>
+      {showGallery ? <StateGallery active={orbState} /> : null}
     </div>
   )
 }

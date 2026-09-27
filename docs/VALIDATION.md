@@ -1,3 +1,32 @@
+# Lyra Web 0.4 — replica del riferimento visivo (27 settembre 2026)
+
+Solo frontend (`web/`): layout, card di stato, colonna «Stati principali», orb,
+composer, navigazione. Nessuna modifica a Lyra Core/API, sicurezza, memoria, vault
+o conferme dei tool. Guida aggiornata: [WEB.md](WEB.md).
+
+| Verifica | Esito |
+|---|---|
+| Frontend lint / test | pulito / **39 passed** (card di stato, versione compatta, colonna stati, `prettyModel`, parametri orb) |
+| Build produzione | ok; pannello DEV assente da `dist` |
+| Suite Python | invariata: **299 passed, 6 skipped** |
+| Card di stato (dati reali di `/api/status`) | «Lyra attiva», «MiniCPM 2B (Ollama)», «Browser: Chromium», «Memoria: attiva», «Knowledge: attivo» |
+| Stati principali (≥1200×620) | 6 card con anteprime vive da un solo renderer; nascosta a 1280×600 e su telefono |
+| Stati dell'orb sull'hero | idle, thinking, using_tool, response, speaking, interrupted, error, offline distinguibili a colpo d'occhio (screenshot forzati dal pannello DEV) |
+| Brain | 4 note elencate all'apertura, con la ricerca vuota (desktop e iPhone) |
+| Chat reale (Lyra API locale + MiniCPM) | risposta resa, orb medio, composer grande; Activity con Connessa → Thinking → Response |
+| iPhone 390×844 | nessun overflow orizzontale; placeholder del composer su una riga |
+
+Screenshot confrontati con Chromium e rendering software (SwiftShader). Durante il
+confronto sono emersi due artefatti degli shader, poi corretti: `pow()` con base
+negativa e `atan()` vicino agli assi generavano bande rettangolari nell'alone.
+Limiti: l'orb è un'approssimazione in tempo reale dell'illustrazione, non una copia
+pixel per pixel; su GPU reale luminosità e bloom possono variare leggermente. La
+graffetta del composer del riferimento è omessa perché l'API non supporta upload.
+Nella chat di prova MiniCPM ha letto «17 per 23» come divisione: è un limite del
+modello, non della UI. NOT VERIFIED ON TARGET LINUX CT.
+
+---
+
 # Lyra Web 0.4 — correzione orb e Brain (27 settembre 2026)
 
 Solo orb e lista note di Brain; resto della GUI invariato.
