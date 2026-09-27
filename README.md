@@ -42,7 +42,22 @@ Python 3.13.5, glibc 2.41, SQLite 3.46.1/FTS5, Playwright 1.63.0; Ollama remoto
 | Modello reale (calculator, memory, knowledge, browser) | **VERIFIED**: live acceptance 9/9; la prosa di MiniCPM a volte riassume male un risultato tool corretto |
 | Browser Chromium | **VERIFIED, stabile/predefinito**: probe PASS, smoke PASS, nessun fallback |
 | Browser Obscura v0.2.3 | **EXPERIMENTAL**, non collaudato sul CT; su Windows il probe di intercettazione fallisce |
-| Lyra API 0.3.0 | Test automatici e smoke reale su Windows (runtime sul PC, Ollama sul CT); **NOT VERIFIED ON TARGET LINUX CT** |
+| Lyra API 0.3.0 | In esercizio sul CT come `lyra-api.service` (verifica riportata dall'utente) |
+| Lyra Web 0.4.0 (PWA) | Verificata su Windows con la Lyra API reale: build/lint/32 test, desktop e viewport iPhone, service worker e offline in Chromium; **NOT VERIFIED ON TARGET LINUX CT** (Caddy non ancora installato) |
+
+## Lyra Web (PWA) 0.4.0
+
+Interfaccia web installabile in `web/` (React + Vite + TypeScript + Three.js), solo
+file statici serviti da Caddy sul CT; `/api` e `/ws` inoltrati alla Lyra API che
+resta su `127.0.0.1:8787`. Home con il solo orb WebGL che reagisce agli eventi
+reali di `/ws`; Chat (composer solo lì, «Come posso aiutarti?»), Brain (vault in
+sola lettura), Activity (timeline in tempo reale); stato «● Lyra» a scomparsa.
+Guida completa, deploy e limiti: [docs/WEB.md](docs/WEB.md); Caddy: `config/Caddyfile`.
+
+```bash
+cd web && npm ci && npm run build                 # sul PC
+rsync -a --delete web/dist/ root@IP-CT-LYRA:/var/www/lyra/
+```
 
 ## Memory vs Knowledge
 
@@ -349,6 +364,6 @@ non usato sul CT dove si passa `--config`), `OPENJARVIS_SSRF_FAIL_OPEN`,
 `JARVIS_NUM_CTX`, e le variabili dei test `JARVIS_BROWSER_SMOKE`/`JARVIS_CDP_URL`.
 
 Documenti: [VALIDATION](docs/VALIDATION.md) (risultati reali),
-[API](docs/API.md), [BROWSER](docs/BROWSER.md), [SERVER_ACCEPTANCE](docs/SERVER_ACCEPTANCE.md),
+[API](docs/API.md), [WEB](docs/WEB.md), [BROWSER](docs/BROWSER.md), [SERVER_ACCEPTANCE](docs/SERVER_ACCEPTANCE.md),
 [LITE_PLAN](docs/LITE_PLAN.md), [REDUCTION_MANIFEST](docs/REDUCTION_MANIFEST.md).
 Licenza Apache 2.0 upstream conservata (LICENSE, NOTICE).

@@ -110,6 +110,25 @@ Con l'extra `api` installato, la suite dello script sopra include i test API
    `curl -H "Authorization: Bearer <key>" http://<ip-ct>:8787/api/status` (200) e
    senza header (401). Nessun port forwarding sul router.
 
+## Lyra Web 0.4.0 (NOT VERIFIED ON TARGET LINUX CT)
+
+Build sul PC, file statici in `/var/www/lyra`, Caddy davanti a Lyra API (che resta
+su `127.0.0.1:8787`). Comandi completi in [WEB.md](WEB.md#deploy-sul-ct-build-sul-pc-caddy-sul-ct).
+
+1. `caddy validate --config /etc/caddy/Caddyfile` e `systemctl reload caddy`.
+2. `curl -s http://127.0.0.1/api/status` dal CT: stesso JSON di `:8787`.
+3. `ss -ltnp | grep 8787` deve mostrare solo `127.0.0.1:8787`.
+4. Dal PC/iPhone `http://<ip-ct>/`: Home con il solo orb; Chat «Calcola 17 * 23
+   usando calculator» → risposta 391 e l'orb che passa da elabora a idle;
+   Activity mostra Thinking → Using tool calculator → Tool completed → Response.
+5. Brain: cercare una parola di una nota del vault e aprirla; modificare la nota in
+   Obsidian, attendere Syncthing, ripetere la ricerca: deve comparire il testo nuovo.
+6. Fermare `lyra-api.service`: pill grigia «Lyra non raggiungibile», orb attenuato,
+   navigazione ancora utilizzabile; riavviarlo: si ricollega da solo.
+7. HTTPS Tailscale (facoltativo): nome MagicDNS nel Caddyfile, poi da iPhone
+   Safari «Condividi → Aggiungi a Home»; aprire l'app, attivare modalità aereo:
+   la shell si apre e dice «Lyra non raggiungibile».
+
 ## Manuale (vault reale e Obsidian)
 
 1. `ask --json 'Usa notes_write per creare collaudo.md con il testo ORCHIDEA-742'`,

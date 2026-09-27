@@ -114,3 +114,11 @@ Nuovo modulo runtime: `src/openjarvis/api.py` (41 moduli). Modificati:
 `docs/API.md`. Nessuna modifica ad agente, executor, pack, router, memoria,
 vault, browser o guard di sicurezza. Dipendenze nuove solo nell'extra `api`:
 `fastapi`, `uvicorn`, `websockets` (pydantic/starlette transitivi).
+
+## Incremento Lyra Web 0.4.0
+
+Nuova directory `web/` (frontend statico, separato da `src/openjarvis/`),
+`config/Caddyfile`, `docs/WEB.md`. Aggiornati README, VALIDATION, SERVER_ACCEPTANCE,
+`.gitattributes` (Caddyfile LF). Nessun file Python modificato; Lyra Core resta 0.3.0.
+Dipendenze solo lato frontend (npm, `web/package.json`); `node_modules` e `dist`
+esclusi da git.

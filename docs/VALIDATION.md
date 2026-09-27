@@ -1,3 +1,34 @@
+# Lyra Web 0.4.0 — PWA (27 settembre 2026)
+
+Frontend nuovo in `web/`; nessuna modifica a Lyra Core/API (resta 0.3.0) né a
+routing, tool, memoria, vault, browser o guard di sicurezza. Guida: [WEB.md](WEB.md).
+
+**Stato: verificato su Windows contro la Lyra API reale; NOT VERIFIED ON TARGET
+LINUX CT** (Caddy e `/var/www/lyra` non ancora installati sul CT).
+
+| Verifica (Node 24.16, React 19.3, Vite 8.3, Three 0.186, Vitest 5) | Esito |
+|---|---|
+| `npm run lint` (ESLint + tsc) | pulito, 0 warning |
+| `npm run test` | **32 passed, 0 failed** (2 file; fetch e WebSocket simulati, nessun modello) |
+| `npm run build` | `web/dist`: JS UI 407 kB (126 kB gzip) + orb Three.js 542 kB (136 kB gzip, chunk separato), 18 file in precache |
+| Suite Python esistente | invariata (nessun file Python modificato) |
+| UI reale nel browser, Lyra API reale + MiniCPM su Ollama CT | chat calculator («17 * 23 = 391», `calculator ✓`), chat knowledge (`notes_search ✓`, risposta Markdown), Brain search/lettura/wikilink, Activity con eventi reali |
+| Orb | WebGL2 reale; stato `thinking`/`idle` pilotato dagli eventi `/ws` reali durante le chat |
+| Viewport | desktop 1440×900, iPhone 390×844 (DPR 3, touch), iPhone landscape 844×390: nessun overflow |
+| Leak | 30 cambi di vista: sempre 1 canvas, nessun nuovo contesto WebGL |
+| `prefers-reduced-motion` | orb presente (WebGL), animazione ridotta |
+| PWA in Chromium reale (build di produzione, proxy come Caddy) | service worker registrato e in controllo; offline: shell dalla cache, «Lyra non raggiungibile», `/api/status` non servito dalla cache |
+
+Proxy: la topologia di produzione (statici + `/api/*` e `/ws` verso
+127.0.0.1:8787 con Host preservato) è stata provata con il proxy di Vite (dev e
+preview) verso la Lyra API reale, WebSocket incluso. Il `config/Caddyfile` non
+è stato eseguito: Caddy non è installato in questo ambiente.
+
+Non verificati: Safari/WebKit su iPhone reale (solo emulazione Chromium),
+tastiera iOS reale, installazione "Aggiungi a Home", HTTPS Tailscale, Caddy sul CT.
+
+---
+
 # Lyra Core 0.3.0 — Lyra API (27 settembre 2026)
 
 Nuovo livello HTTP + WebSocket (`src/openjarvis/api.py`, `lyra api`) sopra lo
