@@ -72,7 +72,7 @@ def events_until_idle(ws, limit=40):
 def test_status_is_cached_and_reports_config(lyra):
     client, _, health = lyra()
     body = client.get("/api/status").json()
-    assert body["status"] == "ok" and body["name"] == "Lyra" and body["version"] == "0.3.1"
+    assert body["status"] == "ok" and body["name"] == "Lyra" and body["version"] == "0.3.2"
     assert body["model"] == {
         "provider": "ollama",
         "model": "openbmb/minicpm5-2b:q8_0",

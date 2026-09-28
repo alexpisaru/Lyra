@@ -1,4 +1,4 @@
-# Lyra Core — latenza (performance pass, 28 settembre 2026)
+# Lyra Core 0.3.2 — latenza (performance pass, 28 settembre 2026)
 
 Modello invariato (`openbmb/minicpm5-2b:q8_0` su Ollama 0.34.4, CPU del CT).
 Nessuna modifica a GUI, tool, SSRF guard, confinamento del vault, ToolExecutor,
