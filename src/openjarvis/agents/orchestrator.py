@@ -9,6 +9,7 @@ from typing import Any, Callable, List, Optional
 
 from openjarvis.agents._stubs import AgentContext, AgentResult, ToolUsingAgent
 from openjarvis.agents.fast_path import FOLLOWUP_TOOLS, FastPath
+from openjarvis.agents.final_path import plan_final, synthesis_messages
 from openjarvis.core.events import EventBus
 from openjarvis.core.registry import AgentRegistry
 from openjarvis.core.types import Message, Role, ToolCall, ToolResult
@@ -51,6 +52,7 @@ class OrchestratorAgent(ToolUsingAgent):
         require_tool_use: bool = False,
         before_tool_call: Optional[Callable[[str, dict[str, Any]], bool]] = None,
         fast_path: Optional[FastPath] = None,
+        fast_final: bool = False,
     ) -> None:
         super().__init__(
             engine,
@@ -83,6 +85,8 @@ class OrchestratorAgent(ToolUsingAgent):
             if fast_path and fast_path.tool in {t.spec.name for t in self._tools}
             else None
         )
+        # Lighter ending after a single tool call that finished the task (final_path.py).
+        self._fast_final = fast_final
         # Profiling (opt-in via run(profile=True)): monotonic marks + Ollama timings.
         self._timing: dict[str, Any] = {}
 
@@ -98,6 +102,19 @@ class OrchestratorAgent(ToolUsingAgent):
         result = self._run_function_calling(input, context, **kwargs)
         if self._fast_path is not None:
             result.metadata["fast_path"] = self._fast_path.tool
+        if result.tool_results:
+            result.metadata.setdefault("final_path", "agent_loop")
+            tools_done = self._timing["tools"]
+            if tools_done:
+                post = self._since() - tools_done[0]["end"]
+                result.metadata["post_tool_seconds"] = round(max(post, 0.0), 3)
+            finals = [c for c in self._timing["llm_calls"] if c["phase"] != "first"]
+            result.metadata["final_prompt_tokens"] = (
+                (finals[-1]["prompt_tokens_evaluated"] or 0) if finals else 0
+            )
+            result.metadata["final_completion_tokens"] = (
+                (finals[-1]["completion_tokens"] or 0) if finals else 0
+            )
         if profile:
             result.metadata["timing"] = self._timing_report()
         return result
@@ -124,6 +141,8 @@ class OrchestratorAgent(ToolUsingAgent):
                 "start": start,
                 "end": self._since(),
                 "tools_offered": len(gen_kwargs.get("tools") or []),
+                "messages": len(messages),
+                "prompt_chars": sum(len(m.text) for m in messages),
                 "tool_calls": [tc.get("name") for tc in result.get("tool_calls") or []],
                 "prompt_tokens_evaluated": (result.get("usage") or {}).get(
                     "prompt_tokens_evaluated"
@@ -135,6 +154,49 @@ class OrchestratorAgent(ToolUsingAgent):
             }
         )
         return result
+
+    def _finish_after_tool(
+        self,
+        query: str,
+        context: Optional[AgentContext],
+        tc: ToolCall,
+        tool_results: list[ToolResult],
+    ) -> Optional[AgentResult]:
+        result = tool_results[0]
+        try:
+            args = json.loads(tc.arguments) if tc.arguments else {}
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(args, dict):
+            return None
+        plan = plan_final(query, tc.name, args, result, fast_path=self._fast_path)
+        if plan is None:
+            return None
+        if plan.kind == "deterministic":
+            self._emit_turn_end(turns=1, content_length=len(plan.text))
+            return AgentResult(
+                content=plan.text,
+                tool_results=tool_results,
+                turns=1,
+                metadata={"final_path": "deterministic"},
+            )
+        history = list(context.conversation.messages) if context is not None else []
+        messages = synthesis_messages(query, tc.name, result.content, history)
+        response = self._timed_generate(messages, "minimal_synthesis")
+        usage = response.get("usage", {})
+        content = self._strip_think_tags(response.get("content", ""))
+        self._emit_turn_end(turns=2, content_length=len(content))
+        return AgentResult(
+            content=content,
+            tool_results=tool_results,
+            turns=2,
+            metadata={
+                "final_path": "minimal_synthesis",
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "truncated": response.get("finish_reason") == "length",
+            },
+        )
 
     def _timed_execute(self, tc: ToolCall) -> ToolResult:
         start = self._since()
@@ -429,6 +491,13 @@ class OrchestratorAgent(ToolUsingAgent):
                         name=tc.name,
                     )
                 )
+
+            # One tool call that clearly finished the task: end without re-sending the
+            # whole agentic prompt (see final_path.py). Anything else keeps the loop.
+            if self._fast_final and executed_calls == 1 and len(all_tool_results) == 1:
+                ending = self._finish_after_tool(input, context, tool_calls[0], all_tool_results)
+                if ending is not None:
+                    return ending
 
         # Max turns exceeded
         self._emit_turn_end(turns=turns, max_turns_exceeded=True)

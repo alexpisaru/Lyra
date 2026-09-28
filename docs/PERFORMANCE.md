@@ -105,6 +105,76 @@ knowledge scende a 4,7 s e browser a 2,8 s; senza cache la sintesi deve leggere
 694 (knowledge) / 831 (browser) token e costa 26–33 s, comunque meno del totale
 di prima. Chat e calculator invariati (nessun fast-path, come previsto).
 
+## Pass #2 — dopo il tool (28 settembre 2026)
+
+Dopo il pass #1 il collo di bottiglia era la risposta scritta *dopo* il tool
+(browser: tool ~1 s, poi ~19 s di modello).
+
+### Cosa rileggeva il modello dopo il tool
+
+Token contati da Ollama sul prompt finale reale (pass #1, senza cronologia):
+
+| Parte | browser | knowledge |
+|---|---|---|
+| prompt di sistema | 121 | 121 |
+| suggerimento del pack | 63 | 88 |
+| schema del tool di follow-up + istruzioni tool del template | 263 | 203 |
+| richiesta + tool call + risultato (940 / 600 caratteri) | 384 | 282 |
+| **totale** | **831** | **694** |
+| cronologia (esempio, 2 scambi) | +149 | +149 |
+
+A ~25 token/s senza cache: ~33 s (browser) e ~28 s (knowledge) solo di lettura.
+
+### Come finisce ora una richiesta con un solo tool
+
+`src/openjarvis/agents/final_path.py`, `agent.fast_final = true`. Si applica solo
+dopo **una** chiamata tool riuscita, eseguita dal ToolExecutor; altrimenti il
+loop agentico continua invariato.
+
+- **`deterministic`** — nessuna seconda chiamata al modello; la risposta è un
+  campo strutturato del risultato del tool e la richiesta chiede esattamente quello:
+  - browser (dopo il fast-path di navigazione): titolo («… e dimmi il titolo»),
+    URL finale («… e dimmi dove sei finito», con i redirect), stato HTTP
+    («… e dimmi lo status code»), sola apertura («Apri https://…»);
+  - calculator: «Calcola / Quanto fa <espressione>» quando il tool ha calcolato
+    esattamente l'espressione scritta dall'utente → «17 × 23 = 391».
+- **`minimal_synthesis`** — il modello scrive la risposta da un prompt corto:
+  un'istruzione fissa (sempre uguale, quindi riusabile dalla cache di Ollama),
+  la richiesta e il risultato del tool. Niente schemi dei tool, suggerimento del
+  pack o cronologia; l'ultimo scambio viene aggiunto (max 600 caratteri) solo se
+  la richiesta rimanda alla conversazione («come prima», «quella pagina», …).
+  Casi: domanda semplice sulla pagina appena aperta («… e riassumila»);
+  `notes_search` con **una sola** nota trovata e mostrata per intero
+  nell'estratto (nuovo metadata `complete` del tool: estratto = nota intera).
+- **`agent_loop`** (invariato) — tutto il resto: più azioni («… e poi vai …»,
+  «… e segui il link …», click/compilazione, già esclusi dal fast-path), più note
+  trovate, una nota più lunga del suo estratto (serve `notes_read`), tool fallito
+  o bloccato, richieste ambigue (nessun fast-path), calcoli in cui il tool ha
+  calcolato un'espressione diversa da quella scritta.
+
+Eventi `/ws`: invariati; con `deterministic` non parte una seconda inferenza
+(`thinking → using_tool → tool_started → tool_finished → thinking → response → idle`,
+il secondo `thinking` è quello che l'API emette sempre a fine tool).
+Metadata: `final_path`, `post_tool_seconds`, `final_prompt_tokens`,
+`final_completion_tokens`.
+
+### Benchmark reale (prima = pass #1, dopo = pass #2)
+
+`scripts/perf_smoke.py` (`--no-fast-final` per il "prima"), run alternati.
+Dati grezzi: [perf-smoke-2026-09-28-post-tool.json](perf-smoke-2026-09-28-post-tool.json).
+
+| Test | Prima: totale (dopo il tool) | Dopo: totale (dopo il tool) | Percorso | Prompt finale |
+|---|---|---|---|---|
+| browser titolo | 19,9 / 19,7 s (18,9 / 18,7) | **0,98 / 0,93 s** (0,0) | deterministic | 831 → 0 token |
+| calculator | 6,2 / 6,4 s (2,9 / 3,0) | **3,5 / 3,4 s** (0,0) | deterministic | 424 → 0 token |
+| knowledge, una nota intera | 21,3 s (21,3) | **6,0 / 5,9 s** (6,0 / 5,9); 14,0 s al primo run | minimal_synthesis | 545 → 218 token |
+| knowledge, più note | 12,5 / 4,7 s | 4,8 / 4,6 s | agent_loop (invariato) | 694 token |
+| browser multi-step | 28,8 / 26,9 s | 9,7 / 12,3 s | agent_loop (invariato) | 828 + 875 token |
+| chat | 2,1 / 1,9 s | 1,9 / 2,0 s | — | — |
+
+Le differenze di knowledge "più note" e browser multi-step vengono solo dalla
+cache di Ollama (stesso percorso, stessi token); nessun peggioramento.
+
 ## Limiti rimasti
 
 - Senza cache la risposta dopo il tool resta lenta (~30 s): è la lettura di

@@ -56,6 +56,7 @@ class JarvisSystem:
                 require_tool_use=selected in ("memory", "knowledge", "files", "browser"),
                 engine_options={"num_ctx": cfg.intelligence.num_ctx},
                 fast_path=fast_path,
+                fast_final=cfg.agent.fast_final,
             )
             history = self._history(prior_messages or [], cfg.agent.history_chars)
             result = agent.run(

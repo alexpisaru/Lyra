@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from openjarvis.agents.fast_path import FastPath, detect_fast_path
+from openjarvis.agents.final_path import SYNTHESIS_INSTRUCTION
 from openjarvis.agents.orchestrator import OrchestratorAgent
 from openjarvis.api import create_app
 from openjarvis.core.config import JarvisConfig, load_config
@@ -240,6 +241,10 @@ def knowledge_system(tmp_path):
     (vault / "collaudo-lyra.md").write_text(
         "# Collaudo\n\nIl colore segreto è ametista.\n", encoding="utf-8"
     )
+    # Longer than the 240-char search excerpt: the answer may need notes_read.
+    (vault / "architettura.md").write_text(
+        "# Architettura\n\n" + "Moduli, confini e contratti del sistema. " * 12, encoding="utf-8"
+    )
     cfg = JarvisConfig()
     cfg.knowledge.enabled = True
     cfg.knowledge.vault_path = str(vault)
@@ -253,28 +258,36 @@ def knowledge_system(tmp_path):
 def test_explicit_knowledge_search_skips_the_first_model_call(knowledge_system):
     engine, calls = scripted_engine({"content": "Il colore segreto è ametista."})
     knowledge_system.engine.generate = engine.generate
-    result = knowledge_system.ask("Cerca nei miei appunti qual è il colore segreto")
+    result = knowledge_system.ask("Cerca nei miei appunti colore segreto")
     assert result["metadata"]["fast_path"] == "notes_search"
     assert result["tool_results"][0].success
     assert "collaudo-lyra.md" in result["tool_results"][0].content
     assert result["content"] == "Il colore segreto è ametista."
+    # One short note, shown whole in the excerpt: the answer is written from a
+    # minimal prompt (no tool schemas, no pack hint, no history).
+    assert result["metadata"]["final_path"] == "minimal_synthesis"
     assert len(calls) == 1
-    assert [t["function"]["name"] for t in calls[0]["options"]["tools"]] == ["notes_read"]
+    assert "tools" not in calls[0]["options"]
+    assert calls[0]["messages"][0].content == SYNTHESIS_INSTRUCTION
+    assert "ametista" in calls[0]["messages"][-1].content
 
 
 def test_fast_path_follow_up_can_still_use_a_tool(knowledge_system):
-    # After the search the model may still read the full note (agentic loop kept).
+    # A note longer than its excerpt: the agent loop stays, with notes_read offered.
     engine, calls = scripted_engine(
         {
             "content": "",
-            "tool_calls": [{"name": "notes_read", "arguments": '{"path": "collaudo-lyra.md"}'}],
+            "tool_calls": [{"name": "notes_read", "arguments": '{"path": "architettura.md"}'}],
         },
-        {"content": "ametista"},
+        {"content": "moduli e contratti"},
     )
     knowledge_system.engine.generate = engine.generate
-    result = knowledge_system.ask("Cerca nelle note il colore segreto")
+    result = knowledge_system.ask("Cerca nelle note architettura")
+    assert result["metadata"]["final_path"] == "agent_loop"
+    assert [t["function"]["name"] for t in calls[0]["options"]["tools"]] == ["notes_read"]
     assert [r.tool_name for r in result["tool_results"]] == ["notes_search", "notes_read"]
-    assert all(r.success for r in result["tool_results"]) and result["content"] == "ametista"
+    assert all(r.success for r in result["tool_results"])
+    assert result["content"] == "moduli e contratti"
 
 
 def test_vault_confinement_holds_on_the_fast_path_follow_up(knowledge_system):
@@ -283,7 +296,7 @@ def test_vault_confinement_holds_on_the_fast_path_follow_up(knowledge_system):
         {"content": "non posso"},
     )
     knowledge_system.engine.generate = engine.generate
-    result = knowledge_system.ask("Cerca nelle note il colore segreto")
+    result = knowledge_system.ask("Cerca nelle note architettura")
     assert not result["tool_results"][1].success
 
 
@@ -353,7 +366,7 @@ def test_profile_reports_where_the_time_goes(knowledge_system):
         "metadata"
     ]
     timing = meta["timing"]
-    assert [c["phase"] for c in timing["llm_calls"]] == ["after_tool"]
+    assert [c["phase"] for c in timing["llm_calls"]] == ["minimal_synthesis"]
     assert timing["llm_calls"][0]["prompt_eval_seconds"] == 2.0
     assert [t["tool"] for t in timing["tools"]] == ["notes_search"]
     assert "route_seconds" in timing and timing["total_seconds"] >= 0

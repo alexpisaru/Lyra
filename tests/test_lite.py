@@ -82,7 +82,8 @@ def test_real_stack_ollama_payload_and_tool_roundtrip(config):
         system.engine._client = httpx.Client(
             transport=httpx.MockTransport(respond), base_url=config.engine.host
         )
-        result = system.ask("Quanto fa 7*8?", pack="general")
+        # Not a bare calculation request: the model writes the answer (agent loop).
+        result = system.ask("Mi serve il prodotto di 7 e 8 per la ricetta", pack="general")
     assert result["content"] == "56"
     assert result["tool_results"][0].success
     assert "56" in payloads[1]["messages"][-1]["content"]

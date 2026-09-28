@@ -40,6 +40,8 @@ class AgentConfig:
     history_chars: int = 2000
     # Deterministic first tool call for unambiguous intents (agents/fast_path.py).
     fast_path: bool = True
+    # Lighter ending after one tool call that finished the task (agents/final_path.py).
+    fast_final: bool = True
     default_system_prompt: str = (
         "Sei Lyra, assistente personale locale. Rispondi nella lingua dell'utente. "
         "Usa solo i tool disponibili, uno alla volta, con argomenti JSON esatti. "

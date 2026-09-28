@@ -348,6 +348,11 @@ non dai tool. Dettagli e misure: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
   Il tool passa comunque dal ToolExecutor (validazione, SSRF, confinamento del
   vault, eventi) e la risposta la scrive sempre il modello, che può ancora
   leggere oltre (`notes_read` / `browser_extract`). Frasi ambigue restano al modello.
+- `agent.fast_final = true` (default): dopo un solo tool che ha chiuso il compito,
+  risposta diretta dal risultato strutturato (titolo, URL finale, stato HTTP,
+  valore del calcolo) senza seconda inferenza, oppure sintesi da un prompt corto
+  senza schemi né cronologia. Multi-step, più risultati e casi ambigui restano al
+  loop agentico. `metadata.final_path` dice quale percorso è stato usato.
 - Benchmark opt-in: `python scripts/perf_smoke.py --config config/lite-chromium.toml`.
 
 ## Limiti runtime

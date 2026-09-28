@@ -213,9 +213,7 @@ class MarkdownVault:
                             f"Vault scan exceeds {MAX_ENTRIES} entries; narrow the vault"
                         )
                     dirs[:] = sorted(
-                        d
-                        for d in dirs
-                        if not d.startswith(".") and not _is_link(Path(parent, d))
+                        d for d in dirs if not d.startswith(".") and not _is_link(Path(parent, d))
                     )
                     for leaf in sorted(files):
                         if leaf.startswith(".") or Path(leaf).suffix.lower() != ".md":
@@ -305,7 +303,12 @@ class NotesTool(BaseTool):
                 )
                 if skipped:
                     content += f"\n[{skipped} unreadable/unsupported Markdown files skipped]"
-                metadata = {"paths": [r.source for r in results], "skipped": skipped}
+                metadata = {
+                    "paths": [r.source for r in results],
+                    "skipped": skipped,
+                    # True when the 240-char excerpt is the whole note
+                    "complete": [len(r.content) <= 240 for r in results],
+                }
             elif self.tool_id == "notes_read":
                 path = params.get("path", "")
                 text = self.vault.read(path)

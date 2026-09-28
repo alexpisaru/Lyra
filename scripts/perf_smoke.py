@@ -28,6 +28,10 @@ CASES = [
     ("calculator", "Calcola 17 * 23 usando calculator."),
     ("knowledge", "Cerca nei miei appunti qual è il colore segreto del collaudo Lyra."),
     ("browser", "Apri https://example.com e dimmi il titolo della pagina."),
+    # one short note found: the answer is written from a minimal prompt
+    ("knowledge_single", "Cerca nei miei appunti ametista"),
+    # multi-step: must keep the agent loop (no deterministic ending)
+    ("browser_multistep", "Apri https://example.com e segui il link More information."),
 ]
 
 
@@ -63,6 +67,10 @@ def summarize(name: str, query: str, result: dict, wall: float) -> dict:
         "post_tool_llm_seconds": round(post, 2) if tools else None,
         "llm_seconds": round(sum(c["end"] - c["start"] for c in calls), 2),
         "fast_path": meta.get("fast_path"),
+        "final_path": meta.get("final_path"),
+        "post_tool_seconds": meta.get("post_tool_seconds"),
+        "final_prompt_tokens": meta.get("final_prompt_tokens"),
+        "final_completion_tokens": meta.get("final_completion_tokens"),
         "tool_calls": [
             {"tool": t["tool"], "seconds": round(t["end"] - t["start"], 3), "ok": t["success"]}
             for t in tools
@@ -75,9 +83,18 @@ def summarize(name: str, query: str, result: dict, wall: float) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, help="Lyra config.toml")
-    parser.add_argument("--only", default="", help="comma list: chat,calculator,knowledge,browser")
+    parser.add_argument(
+        "--only",
+        default="",
+        help="comma list: chat,calculator,knowledge,knowledge_single,browser,browser_multistep",
+    )
     parser.add_argument(
         "--no-fast-path", action="store_true", help="disable fast paths (agent.fast_path=false)"
+    )
+    parser.add_argument(
+        "--no-fast-final",
+        action="store_true",
+        help="disable the post-tool endings (agent.fast_final=false)",
     )
     parser.add_argument(
         "--keep-alive", default=None, help='override engine.keep_alive ("" = Ollama default)'
@@ -90,11 +107,17 @@ def main() -> int:
     config = load_config(args.config)
     if args.no_fast_path:
         config.agent.fast_path = False
+    if args.no_fast_final:
+        config.agent.fast_final = False
     if args.keep_alive is not None:
         config.engine.keep_alive = args.keep_alive
     print(
         json.dumps(
-            {"fast_path": config.agent.fast_path, "keep_alive": config.engine.keep_alive or None}
+            {
+                "fast_path": config.agent.fast_path,
+                "fast_final": config.agent.fast_final,
+                "keep_alive": config.engine.keep_alive or None,
+            }
         ),
         flush=True,
     )

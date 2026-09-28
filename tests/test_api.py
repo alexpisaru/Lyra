@@ -104,7 +104,10 @@ def test_chat_explicit_pack_runs_real_tool_and_streams_events(lyra):
         events = events_until_idle(ws)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["content"] == "391" and body["pack"] == "general" and body["complete"]
+    # The calculator already answered exactly what was asked: no second model call.
+    assert body["content"] == "17 × 23 = 391" and body["pack"] == "general" and body["complete"]
+    assert body["metadata"]["final_path"] == "deterministic"
+    assert system.engine.generate.call_count == 1
     assert body["tool_results"][0]["tool_name"] == "calculator"
     assert body["tool_results"][0]["success"] and "391" in body["tool_results"][0]["content"]
     assert body["metadata"]["tools"] == ["calculator"]
@@ -115,7 +118,7 @@ def test_chat_explicit_pack_runs_real_tool_and_streams_events(lyra):
         {"type": "tool_started", "tool": "calculator"},
         {"type": "tool_finished", "tool": "calculator", "success": True},
         {"type": "state", "state": "thinking"},
-        {"type": "response", "content": "391"},
+        {"type": "response", "content": "17 × 23 = 391"},
         {"type": "state", "state": "idle"},
     ]
     remaining = iter(events)
