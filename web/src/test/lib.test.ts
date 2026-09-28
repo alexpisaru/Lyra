@@ -8,7 +8,6 @@ import { ENTER_SECONDS, EXIT_SECONDS, RingMorph, SPHERE } from '../lib/ringMorph
 import { deriveOrbState, FUTURE_ORB_STATES, ORB_PARAMS, orbParams, workCaption, type OrbState } from '../lib/orbState'
 import { backoffDelay, parseEvent } from '../lib/websocket'
 import { prettyModel } from '../components/StatusPill'
-import { standaloneGap } from '../lib/standalone'
 import type { LyraEvent } from '../types/api'
 import { fakeSocket, FakeSocket, json, mockFetch, STATUS } from './fakes'
 
@@ -346,33 +345,5 @@ describe('workCaption', () => {
     expect(workCaption('using_tool', 'memory_retrieve')).toBe('Uso la memoria…')
     expect(workCaption('using_tool', 'some_new_tool')).toBe('Uso some new tool…')
     expect(workCaption('using_tool', null)).toBe('Uso uno strumento…')
-  })
-})
-
-describe('standaloneGap (iOS home-screen app short of the screen)', () => {
-  const setScreen = (inner: [number, number], screen: [number, number], standalone: boolean) => {
-    vi.stubGlobal('innerWidth', inner[0])
-    vi.stubGlobal('innerHeight', inner[1])
-    vi.stubGlobal('screen', { width: screen[0], height: screen[1] })
-    vi.stubGlobal('navigator', { ...navigator, standalone })
-  }
-
-  it('measures the missing strip only in standalone mode', () => {
-    setScreen([402, 815], [402, 874], true)
-    expect(standaloneGap()).toBe(59)
-    setScreen([402, 815], [402, 874], false) // browser tab: never touched
-    expect(standaloneGap()).toBe(0)
-  })
-
-  it('ignores implausible differences and full-height layouts', () => {
-    setScreen([402, 874], [402, 874], true)
-    expect(standaloneGap()).toBe(0)
-    setScreen([402, 500], [402, 874], true) // e.g. keyboard open: not a status-bar gap
-    expect(standaloneGap()).toBe(0)
-  })
-
-  it('uses the short screen side in landscape', () => {
-    setScreen([874, 380], [402, 874], true)
-    expect(standaloneGap()).toBe(22)
   })
 })

@@ -1,6 +1,10 @@
 :root {
   color-scheme: dark;
   --bg: #02040a;
+  /* bottom colour of the app surface (see .hero): what shows under it, if anything */
+  --shell-bg: #030817;
+  /* bottom navigation sits just above the home indicator, nothing more */
+  --nav-bottom: max(12px, var(--safe-bottom));
   --bg-2: #050a17;
   --ink: #e8f0ff;
   --ink-2: rgba(214, 226, 255, 0.66);
@@ -34,20 +38,23 @@
   box-sizing: border-box;
 }
 
+/* The page itself has the colour of the bottom of the app and always covers the
+   whole viewport; no height is computed in JS. */
 html,
 body,
 #root {
-  height: 100%;
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  background: var(--shell-bg);
 }
 
 html {
-  background: var(--bg);
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  margin: 0;
-  background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
   font-weight: 350;
@@ -91,11 +98,11 @@ button {
 /* ---------- canvas & atmosphere ---------- */
 
 .app {
-  position: fixed;
-  inset: 0;
-  /* iOS home-screen apps can lay the page out short of the screen (lib/standalone.ts) */
-  bottom: calc(-1 * var(--standalone-gap, 0px));
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
   overflow: hidden;
+  background: var(--shell-bg);
 }
 
 .backdrop {
@@ -1452,7 +1459,7 @@ button {
 /* Bottom nav: long floating pill, lit active tab (reference). */
 .nav {
   width: min(572px, calc(100% - 28px - var(--safe-left) - var(--safe-right)));
-  bottom: calc(14px + var(--safe-bottom));
+  bottom: var(--nav-bottom);
 }
 
 .nav-inner {
@@ -1579,7 +1586,7 @@ button {
   }
 
   .nav {
-    bottom: calc(10px + var(--safe-bottom));
+    bottom: var(--nav-bottom);
   }
 
   .nav-inner {
@@ -1719,11 +1726,11 @@ button {
 
 /* composer and thread sit on the compact nav (54px, 52px on phones) */
 .chat-dock {
-  bottom: calc(54px + 14px + var(--safe-bottom) + 20px + var(--kb));
+  bottom: calc(54px + var(--nav-bottom) + 20px + var(--kb));
 }
 
 .chat-scroll {
-  bottom: calc(54px + 14px + var(--safe-bottom) + 20px + 76px + 36px + var(--kb));
+  bottom: calc(54px + var(--nav-bottom) + 20px + 76px + 36px + var(--kb));
 }
 
 .turn-lyra .markdown > *,
@@ -1767,10 +1774,10 @@ button {
 
   .chat-scroll {
     top: 30dvh;
-    bottom: calc(52px + 10px + var(--safe-bottom) + 14px + 62px + 28px + var(--kb));
+    bottom: calc(52px + var(--nav-bottom) + 14px + 62px + 28px + var(--kb));
   }
 
   .chat-dock {
-    bottom: calc(52px + 10px + var(--safe-bottom) + 14px + var(--kb));
+    bottom: calc(52px + var(--nav-bottom) + 14px + var(--kb));
   }
 }

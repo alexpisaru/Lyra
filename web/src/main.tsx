@@ -2,10 +2,7 @@ import '@fontsource-variable/jost'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import { fixStandaloneHeight } from './lib/standalone'
 import './styles.css'
-
-fixStandaloneHeight()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
