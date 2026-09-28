@@ -205,7 +205,8 @@ button {
   transform: translateY(4px);
   transition:
     opacity 500ms var(--ease),
-    transform 500ms var(--ease);
+    transform 500ms var(--ease),
+    top 900ms var(--ease);
 }
 
 .home-caption[data-visible='true'] {
@@ -1394,7 +1395,7 @@ button {
 
 
 /* ======================================================================
-   Reference layout: framed hero + "Stati principali" column
+   Reference layout: framed hero
    ====================================================================== */
 
 .app {
@@ -1415,10 +1416,6 @@ button {
   box-shadow:
     0 0 0 1px rgba(60, 120, 255, 0.04) inset,
     0 0 40px rgba(20, 70, 200, 0.12);
-}
-
-.app[data-gallery] .hero {
-  right: calc(var(--gap) * 3 + 336px);
 }
 
 .backdrop {
@@ -1536,94 +1533,6 @@ button {
   bottom: calc(64px + 14px + var(--safe-bottom) + 22px + 76px + 40px + var(--kb));
 }
 
-/* "Stati principali" column */
-.gallery {
-  position: absolute;
-  top: var(--gap);
-  right: var(--gap);
-  bottom: var(--gap);
-  width: 336px;
-  display: flex;
-  flex-direction: column;
-  padding: 10px 2px 0;
-}
-
-.gallery-title {
-  margin: 8px 6px 16px;
-  font-size: 1rem;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #e8f0ff;
-}
-
-.gallery-grid {
-  flex: 1;
-  min-height: 0;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-  gap: 12px;
-}
-
-.gallery-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-height: 0;
-  padding: 8px 8px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(90, 150, 255, 0.16);
-  background: linear-gradient(180deg, rgba(7, 13, 28, 0.95), rgba(4, 8, 18, 0.95));
-  transition:
-    border-color 400ms var(--ease),
-    box-shadow 400ms var(--ease);
-}
-
-.gallery-card[data-active] {
-  border-color: rgba(120, 190, 255, 0.55);
-  box-shadow:
-    0 0 0 1px rgba(90, 170, 255, 0.12) inset,
-    0 0 26px rgba(40, 120, 255, 0.25);
-}
-
-.gallery-preview {
-  flex: 1;
-  width: 100%;
-  min-height: 80px;
-}
-
-.gallery-preview[data-fallback] {
-  background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(80, 170, 255, 0.55) 34%, rgba(40, 110, 255, 0.12) 40%, transparent 46%);
-}
-
-.gallery-name {
-  margin: 4px 0 2px;
-  font-size: 0.9rem;
-  font-weight: 450;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #eef4ff;
-}
-
-.gallery-sub {
-  margin: 0;
-  font-size: 0.78rem;
-  color: rgba(190, 206, 240, 0.62);
-}
-
-.gallery-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 2;
-}
-
 /* Panels share the reference's thin cold border and deep glass. */
 .panel {
   border-color: rgba(90, 150, 255, 0.18);
@@ -1693,5 +1602,155 @@ button {
 
   .chat-scroll {
     bottom: calc(62px + 10px + var(--safe-bottom) + 14px + 62px + 30px + var(--kb));
+  }
+}
+
+/* ======================================================================
+   Layout refinements: open dark space, compact nav, lighter chat
+   ====================================================================== */
+
+/* 1. The orb floats in open, near-black space: no framed card, waves only as a veil low down. */
+.hero {
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background:
+    radial-gradient(55% 45% at 50% 38%, rgba(14, 34, 90, 0.16), transparent 70%),
+    linear-gradient(180deg, #010208 0%, #02040c 70%, #030817 100%);
+}
+
+.backdrop-waves {
+  opacity: 0.55;
+  -webkit-mask-image: linear-gradient(180deg, transparent 58%, #000 92%);
+  mask-image: linear-gradient(180deg, transparent 58%, #000 92%);
+}
+
+/* 3. What Lyra is doing, under the orb. */
+.home-caption {
+  letter-spacing: 0.22em;
+  color: rgba(170, 200, 245, 0.7);
+}
+
+/* 5. Compact nav: icons; the label shows only on the active item. */
+.nav {
+  width: auto;
+}
+
+.nav-inner {
+  display: flex;
+  gap: 2px;
+  height: 54px;
+  padding: 5px;
+  border-radius: 999px;
+}
+
+.nav-item {
+  flex-direction: row;
+  gap: 0;
+  height: 100%;
+  min-width: 48px;
+  padding: 0 14px;
+  border-radius: 999px;
+  transition:
+    color 240ms var(--ease),
+    background 240ms var(--ease),
+    padding 320ms var(--ease);
+}
+
+.nav-label {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  transition:
+    max-width 320ms var(--ease),
+    opacity 240ms var(--ease),
+    margin 320ms var(--ease);
+}
+
+.nav-item[aria-current='page'] {
+  padding: 0 18px 0 16px;
+}
+
+.nav-item[aria-current='page'] .nav-label {
+  max-width: 96px;
+  margin-left: 8px;
+  opacity: 1;
+}
+
+.nav-badge {
+  top: -2px;
+  right: -4px;
+}
+
+/* 4. Chat: the thread rises into the space under the orb and dissolves into it;
+   Lyra's answer appears block by block. */
+.chat-scroll {
+  top: 34dvh;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 110px, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 110px, #000 calc(100% - 20px), transparent 100%);
+}
+
+.chat-thread {
+  padding-top: 90px;
+}
+
+/* composer and thread sit on the compact nav (54px, 52px on phones) */
+.chat-dock {
+  bottom: calc(54px + 14px + var(--safe-bottom) + 20px + var(--kb));
+}
+
+.chat-scroll {
+  bottom: calc(54px + 14px + var(--safe-bottom) + 20px + 76px + 36px + var(--kb));
+}
+
+.turn-lyra .markdown > *,
+.turn-lyra > .turn-text,
+.turn-lyra .turn-meta {
+  animation: line-in 620ms var(--ease) both;
+}
+
+.turn-lyra .markdown > :nth-child(2) { animation-delay: 110ms; }
+.turn-lyra .markdown > :nth-child(3) { animation-delay: 220ms; }
+.turn-lyra .markdown > :nth-child(4) { animation-delay: 330ms; }
+.turn-lyra .markdown > :nth-child(5) { animation-delay: 440ms; }
+.turn-lyra .markdown > :nth-child(6) { animation-delay: 550ms; }
+.turn-lyra .markdown > :nth-child(n + 7) { animation-delay: 660ms; }
+.turn-lyra .turn-meta { animation-delay: 380ms; }
+
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-lyra .markdown > *,
+  .turn-lyra > .turn-text,
+  .turn-lyra .turn-meta {
+    animation: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .nav-inner {
+    height: 52px;
+  }
+
+  .nav-item {
+    padding: 0 12px;
+  }
+
+  .chat-scroll {
+    top: 30dvh;
+    bottom: calc(52px + 10px + var(--safe-bottom) + 14px + 62px + 28px + var(--kb));
+  }
+
+  .chat-dock {
+    bottom: calc(52px + 10px + var(--safe-bottom) + 14px + var(--kb));
   }
 }

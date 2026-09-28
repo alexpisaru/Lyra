@@ -34,6 +34,8 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
   const [runtime, setRuntime] = useState<RuntimeState>('idle')
   const [responding, setResponding] = useState(false)
   const [toolHold, setToolHold] = useState(false)
+  // name of the tool Lyra is using (from /ws tool_started), for the caption under the orb
+  const [tool, setTool] = useState<string | null>(null)
   const toolTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toolStartedAt = useRef(0)
   const finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -61,7 +63,12 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
 
   const onEvent = useCallback((event: LyraEvent) => {
     dispatch({ type: 'event', event, at: Date.now() })
-    if (event.type === 'state') setRuntime(event.state)
+    if (event.type === 'state') {
+      setRuntime(event.state)
+      if (event.state === 'idle') setTool(null)
+    }
+    if (event.type === 'tool_started') setTool(event.tool)
+    if (event.type === 'response') setTool(null)
     if (event.type === 'tool_started' || event.type === 'response') {
       setSignal({ kind: event.type, at: performance.now() })
     }
@@ -94,6 +101,7 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
       if (state === 'closed') {
         setRuntime('idle')
         setToolHold(false)
+        setTool(null)
       }
     },
     [refreshStatus],
@@ -131,6 +139,7 @@ export function useLyraState({ socket: injected, pollMs = STATUS_POLL_MS }: Lyra
     connection,
     runtime,
     orbState,
+    tool,
     signal,
     activity: activity.entries,
     clearActivity,

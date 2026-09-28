@@ -4,7 +4,8 @@ import { api, ApiError, setApiToken } from '../lib/api'
 import { orbFrame } from '../lib/frames'
 import { excerptText, noteTitle, prepareNote, stripFrontmatter, WIKI_PREFIX } from '../lib/notes'
 import { pickQuality, QUALITY } from '../lib/orbScene'
-import { deriveOrbState, FUTURE_ORB_STATES, ORB_PARAMS, orbParams, type OrbState } from '../lib/orbState'
+import { ENTER_SECONDS, EXIT_SECONDS, RingMorph, SPHERE } from '../lib/ringMorph'
+import { deriveOrbState, FUTURE_ORB_STATES, ORB_PARAMS, orbParams, workCaption, type OrbState } from '../lib/orbState'
 import { backoffDelay, parseEvent } from '../lib/websocket'
 import { prettyModel } from '../components/StatusPill'
 import type { LyraEvent } from '../types/api'
@@ -204,22 +205,23 @@ describe('orb state machine', () => {
     // Thinking: internal energy, 2-3x activity, violet more present, cyan/violet alternation.
     expect(thinking.flow).toBeGreaterThanOrEqual(idle.flow * 3)
     expect(thinking.speed).toBeGreaterThanOrEqual(idle.speed * 2.5)
-    expect(thinking.core).toBeGreaterThanOrEqual(idle.core * 4)
+    expect(thinking.core).toBeGreaterThanOrEqual(idle.core * 3)
     expect(thinking.purple).toBeGreaterThan(idle.purple)
     expect(thinking.alternate).toBe(1)
-    // Thinking keeps its arcs as close loops; using tool swings them far out.
-    expect(thinking.arcSpread).toBeLessThan(1)
+    // Thinking keeps the flux loops close; using tool extends them far out.
+    expect(thinking.fluxReach).toBeLessThan(1)
     // Using tool: energy organised outwards (arcs, orbit), compact inside.
-    expect(tool.arcs).toBeGreaterThanOrEqual(thinking.arcs * 1.8)
-    expect(tool.arcSpread).toBeGreaterThan(1.3)
+    expect(tool.flux).toBeGreaterThan(thinking.flux)
+    expect(tool.fluxReach).toBeGreaterThan(thinking.fluxReach + 0.2)
     expect(tool.orbit).toBeGreaterThanOrEqual(thinking.orbit * 2)
     expect(tool.compression).toBeGreaterThan(thinking.compression)
     expect(tool.core).toBeLessThan(thinking.core)
     // Response: strongest glow; the wave itself is a one-shot pulse.
     expect(orbParams('response').glow).toBeGreaterThan(Math.max(idle.glow, thinking.glow, tool.glow))
-    // ...plus the starburst from the centre, only in response.
-    expect(orbParams('response').flare).toBe(1)
-    expect(Object.values(ORB_PARAMS).filter((p) => p.flare > 0)).toHaveLength(1)
+    // ...and a livelier web than idle (no white flash: the wave is cyan, see orbShaders).
+    expect(orbParams('response').discharge).toBeGreaterThan(idle.discharge)
+    // Thinking crackles more than idle.
+    expect(thinking.discharge).toBeGreaterThan(idle.discharge * 1.4)
     // Error: loses cohesion, jitters, violet drifts to magenta; not a red orb.
     expect(orbParams('error').dispersion).toBeGreaterThan(0.4)
     expect(orbParams('error').jitter).toBe(1)
@@ -283,5 +285,65 @@ describe('prettyModel', () => {
     expect(prettyModel('openbmb/minicpm5-2b:q8_0')).toBe('MiniCPM 2B')
     expect(prettyModel('qwen2.5-3b-instruct:q4_K_M')).toBe('Qwen 3B')
     expect(prettyModel('custom-model:latest')).toBe('custom-model')
+  })
+})
+
+describe('ring morph (thinking / using_tool)', () => {
+  const run = (ring: RingMorph, seconds: number, working: boolean) => {
+    let shape = ring.update(0, working)
+    for (let t = 0; t < seconds; t += 0.05) shape = ring.update(0.05, working)
+    return shape
+  }
+
+  it('breaks the sphere into a ring while working and holds it', () => {
+    const ring = new RingMorph()
+    expect(ring.update(0.05, false)).toEqual(SPHERE)
+    const early = run(ring, 1.0, true)
+    expect(early.scatter).toBeGreaterThan(0.3) // decomposition first
+    const formed = run(ring, ENTER_SECONDS + 4, true)
+    expect(formed.morph).toBe(1)
+    expect(formed.energy).toBe(1) // thinking energy borrowed
+    expect(formed.spin).toBeGreaterThan(0)
+  })
+
+  it('closes back into the sphere when the work ends', () => {
+    const ring = new RingMorph()
+    run(ring, 6, true)
+    const leaving = run(ring, 0.6, false)
+    expect(leaving.morph).toBeGreaterThan(0)
+    expect(run(ring, EXIT_SECONDS, false)).toEqual(SPHERE)
+  })
+
+  it('resumes the ring when work starts again while it is still closing', () => {
+    const ring = new RingMorph()
+    run(ring, 6, true)
+    run(ring, 0.3, false)
+    const back = ring.update(0.05, true)
+    expect(back.morph).toBeGreaterThan(0.8) // no restart from the sphere
+  })
+})
+
+describe('speaking', () => {
+  it('is lively: more turbulent and irregular than idle, with rhythm', () => {
+    const idle = orbParams('idle')
+    const speaking = orbParams('speaking')
+    expect(speaking.speed).toBeGreaterThanOrEqual(idle.speed * 3)
+    expect(speaking.deform).toBeGreaterThanOrEqual(idle.deform * 2.5)
+    expect(speaking.flow).toBeGreaterThan(idle.flow * 4)
+    expect(speaking.rhythm).toBeGreaterThan(1)
+  })
+})
+
+describe('workCaption', () => {
+  it('names the real tools in plain Italian and stays silent when idle', () => {
+    expect(workCaption('idle', null)).toBeNull()
+    expect(workCaption('response', null)).toBeNull()
+    expect(workCaption('thinking', null)).toBe('Sto pensando…')
+    expect(workCaption('using_tool', 'calculator')).toBe('Uso la calcolatrice…')
+    expect(workCaption('using_tool', 'notes_search')).toBe('Uso le note…')
+    expect(workCaption('using_tool', 'browser_navigate')).toBe('Uso il browser…')
+    expect(workCaption('using_tool', 'memory_retrieve')).toBe('Uso la memoria…')
+    expect(workCaption('using_tool', 'some_new_tool')).toBe('Uso some new tool…')
+    expect(workCaption('using_tool', null)).toBe('Uso uno strumento…')
   })
 })

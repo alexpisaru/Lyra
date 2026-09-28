@@ -10,12 +10,14 @@ interface ChatViewProps {
   chat: ChatController
   status: LyraStatus | null
   online: boolean
+  /** what Lyra is doing right now (from the live runtime), shown while waiting */
+  working?: string | null
 }
 
 const ALL_PACKS: Pack[] = ['auto', 'chat', 'general', 'files', 'memory', 'knowledge', 'browser']
 
 /** Conversation as typography: discreet user line, Lyra's answer in the foreground. */
-export function ChatView({ chat, status, online }: ChatViewProps) {
+export function ChatView({ chat, status, online, working }: ChatViewProps) {
   const end = useRef<HTMLDivElement>(null)
   const packs = status ? ALL_PACKS.filter((p) => p !== 'browser' || status.browser.enabled) : ALL_PACKS
 
@@ -59,7 +61,7 @@ export function ChatView({ chat, status, online }: ChatViewProps) {
               </article>
             ),
           )}
-          {chat.pending ? <p className="turn-pending">Lyra sta elaborando</p> : null}
+          {chat.pending ? <p className="turn-pending">{working ?? 'Lyra sta elaborando'}</p> : null}
           <div ref={end} />
         </div>
       </div>

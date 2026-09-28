@@ -1,53 +1,49 @@
 import * as THREE from 'three'
 import { ORB_PARAMS, type OrbParams, type OrbPulse, type OrbState } from './orbState'
+import { RingMorph } from './ringMorph'
 import {
   CORE_VERTEX,
+  DISCHARGE_VERTEX,
   GLOW_FRAGMENT,
   GLOW_VERTEX,
   POINT_FRAGMENT,
   SHELL_VERTEX,
   SPRAY_VERTEX,
   STAR_VERTEX,
-  STREAK_VERTEX,
+  TRAIL_FRAGMENT,
+  TRAIL_VERTEX,
 } from './orbShaders'
 
-export type QualityTier = 'high' | 'medium' | 'low' | 'mini'
-
-interface CurveSet {
-  curves: number
-  points: number
-}
+export type QualityTier = 'high' | 'medium' | 'low'
 
 export interface Quality {
   tier: QualityTier
   shell: number
   core: number
   spray: number
-  violet: CurveSet
-  /** lightning-like luminous veins across the surface */
-  veins: CurveSet
-  arcs: CurveSet
+  /** energy mesh: nodes on the sphere, links to the nearest neighbours, points per radian of link */
+  web: { nodes: number; links: number; density: number }
+  /** a few bold main strands drawn over the fine net (big cells) */
+  strands: { nodes: number; links: number; density: number }
+  /** open energy trails (soft ribbons) x segments per trail */
+  trails: { count: number; segments: number }
   stars: number
   maxPixelRatio: number
 }
 
-// The shell (rim + veins) carries the look; streaks and arcs are few and fine.
+// The look: crisp dense rim + an energy web over the whole sphere + lots of bright particles.
 export const QUALITY: Record<QualityTier, Quality> = {
   high: {
-    tier: 'high', shell: 24000, core: 4500, spray: 3500, violet: { curves: 14, points: 150 }, veins: { curves: 56, points: 160 },
-    arcs: { curves: 10, points: 1000 }, stars: 500, maxPixelRatio: 2,
+    tier: 'high', shell: 20000, core: 8000, spray: 14000, web: { nodes: 1900, links: 3, density: 230 }, strands: { nodes: 70, links: 2, density: 200 },
+    trails: { count: 14, segments: 96 }, stars: 160, maxPixelRatio: 2,
   },
   medium: {
-    tier: 'medium', shell: 14000, core: 2600, spray: 2000, violet: { curves: 10, points: 120 }, veins: { curves: 40, points: 130 },
-    arcs: { curves: 8, points: 700 }, stars: 250, maxPixelRatio: 2,
+    tier: 'medium', shell: 16000, core: 5000, spray: 6500, web: { nodes: 1200, links: 3, density: 170 }, strands: { nodes: 55, links: 2, density: 150 },
+    trails: { count: 10, segments: 72 }, stars: 250, maxPixelRatio: 2,
   },
   low: {
-    tier: 'low', shell: 8000, core: 1500, spray: 1200, violet: { curves: 8, points: 100 }, veins: { curves: 18, points: 100 },
-    arcs: { curves: 6, points: 500 }, stars: 120, maxPixelRatio: 1.5,
-  },
-  mini: {
-    tier: 'mini', shell: 6500, core: 900, spray: 700, violet: { curves: 7, points: 90 }, veins: { curves: 18, points: 90 },
-    arcs: { curves: 7, points: 420 }, stars: 0, maxPixelRatio: 2,
+    tier: 'low', shell: 9000, core: 2800, spray: 3000, web: { nodes: 650, links: 3, density: 120 }, strands: { nodes: 40, links: 2, density: 110 },
+    trails: { count: 7, segments: 56 }, stars: 120, maxPixelRatio: 1.5,
   },
 }
 
@@ -102,91 +98,148 @@ function fibonacci(count: number, rand: Rand) {
   }
 }
 
-function strip(set: CurveSet, point: (curve: number, t: number) => THREE.Vector3, rand: Rand) {
-  const n = set.curves * set.points
+/**
+ * Energy mesh (the reference's net, not a tangle): bright nodes spread over the
+ * sphere, each linked to its nearest neighbours by a short, slightly jagged
+ * filament, so the links close into irregular cells.
+ * Per point: aT along its link, aSeg = (link id, 1 for a node), aSeed.
+ */
+function energyWeb(q: Quality['web'], rand: Rand) {
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  const nodes: THREE.Vector3[] = []
+  for (let i = 0; i < q.nodes; i += 1) {
+    // fibonacci spread + jitter: even coverage, irregular cells
+    const y = 1 - ((i + 0.5) / q.nodes) * 2
+    const r = Math.sqrt(1 - y * y)
+    const th = golden * i
+    const v = new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r)
+    v.add(unit(rand).multiplyScalar(0.07 + rand() * 0.05)).normalize()
+    nodes.push(v)
+  }
+  const pts: { v: THREE.Vector3; t: number; id: number; node: number }[] = []
+  const seen = new Set<string>()
+  nodes.forEach((a, i) => {
+    pts.push({ v: a.clone(), t: 0.5, id: rand(), node: 1 })
+    const nearest = nodes
+      .map((b, j) => ({ j, d: a.distanceToSquared(b) }))
+      .filter((e) => e.j !== i)
+      .sort((x, y) => x.d - y.d)
+      .slice(0, q.links + (rand() < 0.3 ? 1 : 0))
+    for (const { j } of nearest) {
+      const key = i < j ? `${i}-${j}` : `${j}-${i}`
+      if (seen.has(key) || rand() < 0.12) continue
+      seen.add(key)
+      const b = nodes[j]
+      const length = a.angleTo(b)
+      const count = Math.max(6, Math.round(length * q.density))
+      // a little sideways bend and jag, never a perfect straight line
+      const side = a.clone().cross(b).normalize()
+      const bend = (rand() - 0.5) * 0.2 * length
+      const id = rand()
+      for (let k = 0; k < count; k += 1) {
+        const t = k / (count - 1)
+        const jag = (rand() - 0.5) * 0.012 * length
+        const v = a.clone().lerp(b, t).addScaledVector(side, (bend * Math.sin(Math.PI * t)) + jag).normalize()
+        pts.push({ v, t, id, node: 0 })
+      }
+    }
+  })
+  const n = pts.length
   const positions = new Float32Array(n * 3)
   const ts = new Float32Array(n)
-  const curves = new Float32Array(n * 2)
+  const segs = new Float32Array(n * 2)
   const seeds = new Float32Array(n)
-  for (let c = 0; c < set.curves; c += 1) {
-    const flow = rand()
-    const life = rand()
-    for (let i = 0; i < set.points; i += 1) {
-      const t = i / (set.points - 1)
-      const v = point(c, t)
-      const k = c * set.points + i
-      positions.set([v.x, v.y, v.z], k * 3)
-      ts[k] = t
-      curves.set([flow, life], k * 2)
-      seeds[k] = rand()
-    }
-  }
+  pts.forEach((pt, k) => {
+    positions.set([pt.v.x, pt.v.y, pt.v.z], k * 3)
+    ts[k] = pt.t
+    segs.set([pt.id, pt.node], k * 2)
+    seeds[k] = rand()
+  })
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geometry.setAttribute('aT', new THREE.BufferAttribute(ts, 1))
-  geometry.setAttribute('aCurve', new THREE.BufferAttribute(curves, 2))
+  geometry.setAttribute('aSeg', new THREE.BufferAttribute(segs, 2))
   geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1))
   return geometry
 }
 
-/** Short violet streaks: smooth curves on the rim, some leaving it slightly. */
-function violetStreaks(set: CurveSet, rand: Rand) {
-  const paths: THREE.Vector3[][] = []
-  for (let c = 0; c < set.curves; c += 1) {
-    const dir = unit(rand)
-    const tangent = unit(rand).cross(dir).normalize()
-    let turn = (rand() - 0.5) * 0.04
-    const phase = rand() * Math.PI * 2
-    const step = 1.25 / set.points
-    const path: THREE.Vector3[] = []
-    for (let i = 0; i < set.points; i += 1) {
-      turn = THREE.MathUtils.clamp(turn + (rand() - 0.5) * 0.02, -0.04, 0.04)
-      tangent.applyAxisAngle(dir, turn)
-      dir.addScaledVector(tangent, step).normalize()
-      tangent.sub(dir.clone().multiplyScalar(tangent.dot(dir))).normalize()
-      path.push(dir.clone().multiplyScalar(1.0 + 0.07 * Math.sin(phase + i * 0.06)))
+/**
+ * Energy trails as ribbons: two vertices per step (one each side). The path
+ * itself is computed in TRAIL_VERTEX so trails can grow, sway and be reborn.
+ */
+function trails(q: Quality['trails'], rand: Rand) {
+  const perTrail = (q.segments + 1) * 2
+  const n = q.count * perTrail
+  const pos = new Float32Array(n * 3)
+  const ts = new Float32Array(n)
+  const sides = new Float32Array(n)
+  const roots = new Float32Array(n * 3)
+  const tangents = new Float32Array(n * 3)
+  const info = new Float32Array(n * 4)
+  const shape = new Float32Array(n * 2)
+  const index: number[] = []
+  for (let c = 0; c < q.count; c += 1) {
+    // roots on the upper/side part of the sphere; trails mostly sweep sideways
+    let root = unit(rand)
+    if (root.y < -0.3) root.y = -root.y
+    root = root.normalize()
+    const sideways = new THREE.Vector3().crossVectors(root, new THREE.Vector3(0, 1, 0))
+    if (sideways.lengthSq() < 1e-4) sideways.set(1, 0, 0)
+    sideways.normalize().multiplyScalar(rand() < 0.5 ? -1 : 1)
+    const tangent = sideways.addScaledVector(unit(rand), 0.35)
+    tangent.sub(root.clone().multiplyScalar(tangent.dot(root))).normalize()
+    const id = rand()
+    const violet = c % 3 === 1 ? 1 : 0
+    const length = 0.7 + rand() * 0.9
+    const curvature = 0.6 + rand() * 0.9
+    const lift = 0.25 + rand() * 0.55
+    const width = 0.06 + rand() * 0.06
+    const base = c * perTrail
+    for (let i = 0; i <= q.segments; i += 1) {
+      for (let side = 0; side < 2; side += 1) {
+        const k = base + i * 2 + side
+        pos.set([root.x, root.y, root.z], k * 3)
+        ts[k] = i / q.segments
+        sides[k] = side === 0 ? -1 : 1
+        roots.set([root.x, root.y, root.z], k * 3)
+        tangents.set([tangent.x, tangent.y, tangent.z], k * 3)
+        info.set([id, violet, length, curvature], k * 4)
+        shape.set([lift, width], k * 2)
+      }
+      if (i < q.segments) {
+        const a0 = base + i * 2
+        index.push(a0, a0 + 1, a0 + 2, a0 + 1, a0 + 3, a0 + 2)
+      }
     }
-    paths.push(path)
   }
-  return strip(set, (c, t) => paths[c][Math.round(t * (set.points - 1))], rand)
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  geometry.setAttribute('aT', new THREE.BufferAttribute(ts, 1))
+  geometry.setAttribute('aSide', new THREE.BufferAttribute(sides, 1))
+  geometry.setAttribute('aRoot', new THREE.BufferAttribute(roots, 3))
+  geometry.setAttribute('aTangent', new THREE.BufferAttribute(tangents, 3))
+  geometry.setAttribute('aTrail', new THREE.BufferAttribute(info, 4))
+  geometry.setAttribute('aShape', new THREE.BufferAttribute(shape, 2))
+  geometry.setIndex(index)
+  return geometry
 }
 
-/** Crackling vein paths on the surface: short straight runs with sharp turns (lightning). */
-function surfaceVeins(set: CurveSet, rand: Rand) {
-  const paths: THREE.Vector3[][] = []
-  for (let c = 0; c < set.curves; c += 1) {
-    const dir = unit(rand)
-    const tangent = unit(rand).cross(dir).normalize()
-    const step = (0.7 + rand() * 0.5) / set.points
-    const path: THREE.Vector3[] = []
-    for (let i = 0; i < set.points; i += 1) {
-      if (rand() < 0.08) tangent.applyAxisAngle(dir, (rand() - 0.5) * 1.6)
-      dir.addScaledVector(tangent, step).normalize()
-      tangent.sub(dir.clone().multiplyScalar(tangent.dot(dir))).normalize()
-      path.push(dir.clone().multiplyScalar(1.0 + (rand() - 0.5) * 0.012))
-    }
-    paths.push(path)
-  }
-  return strip(set, (c, t) => paths[c][Math.round(t * (set.points - 1))], rand)
-}
+// Look switches (kept so a removed element can be restored in one place).
+/** outer energy trails around the sphere */
+const SHOW_TRAILS = false
+/** bright cyan ring along the silhouette: 1 = full, 0 = none (the mesh still marks the edge) */
+const RIM_RING = 0
+/** translucent cyan body filling the sphere: 1 = on, 0 = off (only the net and particles remain) */
+const BODY_FILL = 0
 
-/** Long, smooth circular arcs in tilted planes, always outside the sphere. */
-function arcs(set: CurveSet, rand: Rand) {
-  const specs = Array.from({ length: set.curves }, () => ({
-    radius: 1.05 + rand() * 0.4,
-    start: rand() * Math.PI * 2,
-    span: 1.8 + rand() * 2.4,
-    rotation: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI)),
-  }))
-  return strip(
-    set,
-    (c, t) => {
-      const s = specs[c]
-      const a = s.start + s.span * t
-      return new THREE.Vector3(Math.cos(a) * s.radius, Math.sin(a) * s.radius, 0).applyQuaternion(s.rotation)
-    },
-    rand,
-  )
+/** Linear mix of two parameter sets (the animation borrows the thinking energy). */
+function mixParams(a: OrbParams, b: OrbParams, k: number): OrbParams {
+  const out = { ...a }
+  const o = out as unknown as Record<string, number>
+  const x = a as unknown as Record<string, number>
+  const y = b as unknown as Record<string, number>
+  for (const key of Object.keys(o)) o[key] = x[key] + (y[key] - x[key]) * k
+  return out
 }
 
 // Pure light: add colour, keep the canvas alpha at 0 so the CSS backdrop shows through.
@@ -203,8 +256,7 @@ const additive = {
 } as const
 
 /**
- * One orb: layers, shared uniforms, eased state and one-shot pulses. Used by
- * the hero scene and (at "mini" quality) by every "Stati principali" preview.
+ * One orb: layers, shared uniforms, eased state and one-shot pulses.
  * States never rebuild geometry: they move eased uniforms.
  */
 export class OrbRig {
@@ -214,9 +266,8 @@ export class OrbRig {
   private readonly disposables: { dispose(): void }[] = []
   private readonly u: Uniforms
   private readonly glowUniforms: Uniforms
-  private readonly violetUniforms: Uniforms
-  private readonly veinUniforms: Uniforms
-  private readonly arcUniforms: Uniforms[] = []
+  private readonly glow: THREE.Mesh
+  private readonly arcUniforms: Uniforms
   private readonly sizes: { uniforms: Uniforms; base: number }[] = []
   private readonly current: OrbParams = { ...ORB_PARAMS.idle }
   private target: OrbParams = ORB_PARAMS.idle
@@ -224,6 +275,10 @@ export class OrbRig {
   private flowTime = 0
   private impulse = 0
   private wave = -1
+  private afterglow = 0
+  // thinking / using_tool: the orb breaks apart into a spinning ring (see ringMorph.ts)
+  private readonly ring = new RingMorph()
+  private working = false
 
   constructor(quality: Quality, rand: Rand) {
     this.u = {
@@ -232,17 +287,24 @@ export class OrbRig {
       uDeform: { value: 0.04 },
       uCore: { value: 0.15 },
       uPurple: { value: 0.75 },
-      uVeins: { value: 0.9 },
+      uPlasma: { value: 0.35 },
+      uDischarge: { value: 0.85 },
       uAlternate: { value: 0 },
       uOrbit: { value: 0.15 },
       uCompress: { value: 0 },
       uDisperse: { value: 0.05 },
       uImpulse: { value: 0 },
       uWave: { value: -1 },
+      uAfterglow: { value: 0 },
       uJitter: { value: 0 },
       uWarm: { value: 0 },
       uRhythm: { value: 0 },
-      uArcSpread: { value: 1 },
+      uFluxReach: { value: 1 },
+      uRim: { value: RIM_RING },
+      uMorph: { value: 0 },
+      uShrink: { value: 1 },
+      uScatter: { value: 0 },
+      uFlatten: { value: 0 },
       uPixelRatio: { value: 1 },
       uBrightness: { value: 1 },
       uSaturation: { value: 1 },
@@ -253,6 +315,7 @@ export class OrbRig {
       const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader: POINT_FRAGMENT, uniforms, ...additive })
       const object = new THREE.Points(geometry, material)
       object.renderOrder = order
+      object.frustumCulled = false
       parent.add(object)
       this.disposables.push(geometry, material)
       this.sizes.push({ uniforms, base: size })
@@ -263,80 +326,57 @@ export class OrbRig {
     this.glowUniforms = {
       uTime: u.uTime,
       uPurple: u.uPurple,
-      uCore: u.uCore,
       uWave: u.uWave,
       uWarm: u.uWarm,
       uRhythm: u.uRhythm,
+      uAfterglow: u.uAfterglow,
       uBrightness: u.uBrightness,
       uSaturation: u.uSaturation,
       uGlow: { value: 1 },
-      uFlare: { value: 0 },
+      uRim: u.uRim,
+      uFill: { value: BODY_FILL },
+      uMorph: u.uMorph,
     }
     const glowGeometry = new THREE.PlaneGeometry(4.4, 4.4)
     const glowMaterial = new THREE.ShaderMaterial({ vertexShader: GLOW_VERTEX, fragmentShader: GLOW_FRAGMENT, uniforms: this.glowUniforms, ...additive })
     const glow = new THREE.Mesh(glowGeometry, glowMaterial)
+    this.glow = glow
     glow.scale.setScalar(2 / 2.2) // uv radius 1 == 2 world units, so d == radius in the shader
     glow.renderOrder = 0
     this.root.add(glow)
     this.disposables.push(glowGeometry, glowMaterial)
 
     const q = quality
-    points(cloud(q.core, () => unit(rand).multiplyScalar(0.93 * Math.pow(rand(), 0.5)), rand), CORE_VERTEX, {}, 12, 1, this.spin)
+    points(cloud(q.core, () => unit(rand).multiplyScalar(0.95 * Math.pow(rand(), 0.45)), rand), CORE_VERTEX, {}, 12, 1, this.spin)
     points(cloud(q.shell, fibonacci(q.shell, rand), rand), SHELL_VERTEX, {}, 12, 2, this.spin)
-    points(cloud(q.spray, () => unit(rand), rand), SPRAY_VERTEX, {}, 11, 3, this.spin)
-
-    const streak = (a: THREE.Color, b: THREE.Color, arc: boolean, head: number): Uniforms => ({
-      uIntensity: { value: 1 },
-      uColorA: { value: a },
-      uColorB: { value: b },
-      uHeadSpeed: { value: head },
-      uIsArc: { value: arc ? 1 : 0 },
+    points(energyWeb(q.web, rand), DISCHARGE_VERTEX, { uWeight: { value: 1 } }, 17, 3, this.spin)
+    points(energyWeb(q.strands, rand), DISCHARGE_VERTEX, { uWeight: { value: 1.3 } }, 22, 3, this.spin)
+    points(cloud(q.spray, () => unit(rand), rand), SPRAY_VERTEX, {}, 15, 4, this.spin)
+    // energy trails: soft ribbons (a mesh, not points)
+    this.arcUniforms = { ...u, uSize: { value: 1 }, uIntensity: { value: 1 } }
+    const trailGeometry = trails(q.trails, rand)
+    const trailMaterial = new THREE.ShaderMaterial({
+      vertexShader: TRAIL_VERTEX,
+      fragmentShader: TRAIL_FRAGMENT,
+      uniforms: this.arcUniforms,
+      ...additive,
+      side: THREE.DoubleSide,
     })
-    this.violetUniforms = points(
-      violetStreaks(q.violet, rand),
-      STREAK_VERTEX,
-      streak(new THREE.Color(0.36, 0.24, 0.98), new THREE.Color(0.72, 0.5, 1.0), false, 0.2),
-      20,
-      4,
-      this.spin,
-    )
-    this.veinUniforms = points(
-      surfaceVeins(q.veins, rand),
-      STREAK_VERTEX,
-      streak(new THREE.Color(0.25, 0.7, 1.0), new THREE.Color(0.85, 0.97, 1.0), false, 0.35),
-      26,
-      4,
-      this.spin,
-    )
-    // Arcs: mostly cyan-blue, one or two violet, as in the reference.
-    const violetArcs = Math.max(1, Math.round(q.arcs.curves / 3))
-    this.arcUniforms.push(
-      points(
-        arcs({ curves: q.arcs.curves - violetArcs, points: q.arcs.points }, rand),
-        STREAK_VERTEX,
-        streak(new THREE.Color(0.3, 0.66, 1.0), new THREE.Color(0.75, 0.95, 1.0), true, 0.12),
-        20,
-        5,
-        this.arcGroup,
-      ),
-      points(
-        arcs({ curves: violetArcs, points: q.arcs.points }, rand),
-        STREAK_VERTEX,
-        streak(new THREE.Color(0.4, 0.26, 0.95), new THREE.Color(0.72, 0.52, 1.0), true, 0.1),
-        20,
-        5,
-        this.arcGroup,
-      ),
-    )
+    const trailMesh = new THREE.Mesh(trailGeometry, trailMaterial)
+    trailMesh.frustumCulled = false
+    trailMesh.renderOrder = 5
+    if (SHOW_TRAILS) this.arcGroup.add(trailMesh)
+    this.disposables.push(trailGeometry, trailMaterial)
     this.spin.add(this.arcGroup)
     this.root.add(this.spin)
   }
 
   setState(state: OrbState) {
     this.target = ORB_PARAMS[state]
+    this.working = state === 'thinking' || state === 'using_tool'
   }
 
-  /** Jump straight to a state without easing (previews). */
+  /** Jump straight to a state without easing. */
   snapState(state: OrbState) {
     this.target = ORB_PARAMS[state]
     Object.assign(this.current, this.target)
@@ -354,46 +394,59 @@ export class OrbRig {
     const cur = this.current as unknown as Record<string, number>
     const tgt = this.target as unknown as Record<string, number>
     for (const key of Object.keys(cur)) cur[key] += (tgt[key] - cur[key]) * ease
-    const p = this.current
+    // reduced motion: no shape changes, the orb stays a sphere
+    const shape = this.ring.update(dt, !opts.reducedMotion && this.working)
+    // the ring always carries the thinking energy (turbulence, faster flow, violet)
+    const p = shape.energy > 0 ? mixParams(this.current, ORB_PARAMS.thinking, shape.energy) : this.current
     const m = opts.motion
     this.time += dt * (0.25 + p.speed * 1.3) * m
     this.flowTime += dt * p.flow * m
     this.impulse *= Math.exp(-dt * 3.5)
     if (this.wave >= 0) {
       this.wave += dt / 0.95
+      // violet afterglow on the rim once the cyan wave has left the centre
+      if (this.wave > 0.35) this.afterglow = Math.max(this.afterglow, Math.min(1, (this.wave - 0.35) * 3))
       if (this.wave > 1) this.wave = -1
+    } else {
+      this.afterglow *= Math.exp(-dt * 1.4)
     }
-    this.spin.rotation.y += dt * (0.03 + p.speed * 0.06) * m
-    this.spin.rotation.x = 0.3 + Math.sin(this.time * 0.1) * 0.05
-    this.arcGroup.rotation.y += dt * (0.04 + p.orbit * 0.5) * m
-    this.arcGroup.rotation.z += dt * p.orbit * 0.1 * m
+    // the ring spins horizontally (around its own axis) and leans towards the viewer
+    this.spin.rotation.y += dt * (0.03 + p.speed * 0.06) * m + dt * 1.1 * shape.spin * m
+    // oblique ring: leaning towards the viewer and tilted sideways
+    this.spin.rotation.x = 0.3 + Math.sin(this.time * 0.1) * 0.05 + 0.15 * shape.morph
+    this.root.rotation.z = -0.5 * shape.morph
+    this.arcGroup.rotation.y += dt * (0.015 + p.orbit * 0.2) * m
 
     const u = this.u
     u.uTime.value = this.time
+    u.uMorph.value = shape.morph
+    u.uShrink.value = shape.shrink
+    u.uScatter.value = shape.scatter
+    u.uFlatten.value = shape.flatten
+    this.glow.scale.setScalar((2 / 2.2) * shape.shrink)
     u.uFlowTime.value = this.flowTime
     u.uDeform.value = p.deform
     u.uCore.value = p.core
     u.uPurple.value = p.purple
-    u.uVeins.value = p.veins
+    u.uPlasma.value = p.plasma
+    u.uDischarge.value = p.discharge
     u.uAlternate.value = p.alternate
     u.uOrbit.value = p.orbit
     u.uCompress.value = p.compression
     u.uDisperse.value = p.dispersion
     u.uImpulse.value = opts.reducedMotion ? 0 : this.impulse
     u.uWave.value = this.wave
+    u.uAfterglow.value = this.afterglow
     u.uJitter.value = p.jitter
     u.uWarm.value = p.warm
     u.uRhythm.value = opts.reducedMotion ? 0 : p.rhythm
-    u.uArcSpread.value = p.arcSpread
+    u.uFluxReach.value = p.fluxReach
     u.uPixelRatio.value = opts.pixelRatio
-    u.uBrightness.value = p.brightness * (0.35 + 0.65 * opts.presence)
+    u.uBrightness.value = p.brightness * (0.35 + 0.65 * opts.presence) * (1 + 0.3 * shape.morph)
     u.uSaturation.value = p.saturation
     const outward = Math.max(0, this.impulse)
-    this.glowUniforms.uGlow.value = p.glow * (1 + outward * 0.25)
-    this.glowUniforms.uFlare.value = p.flare
-    this.violetUniforms.uIntensity.value = p.purple * 1.1
-    this.veinUniforms.uIntensity.value = p.veins * 1.3
-    for (const uniforms of this.arcUniforms) uniforms.uIntensity.value = p.arcs * 3 * (1 + outward)
+    this.glowUniforms.uGlow.value = p.glow * (1 + outward * 0.2)
+    this.arcUniforms.uIntensity.value = p.flux * (1 + outward)
     for (const { uniforms, base } of this.sizes) uniforms.uSize.value = base * opts.sizeScale
   }
 
@@ -556,131 +609,6 @@ export class OrbScene {
     this.stop()
     this.rig.dispose()
     this.disposables.forEach((item) => item.dispose())
-    this.renderer.dispose()
-    this.renderer.forceContextLoss()
-  }
-}
-
-interface GalleryEntry {
-  state: OrbState
-  element: HTMLElement
-  scene: THREE.Scene
-  camera: THREE.PerspectiveCamera
-  rig: OrbRig
-  nextPulse: number
-  step: number
-}
-
-/**
- * The "Stati principali" previews: ONE renderer draws a mini orb into each
- * card slot with scissor rectangles (one WebGL context for all six). Response
- * and using_tool replay their one-shot events so the previews stay readable.
- */
-export class OrbGallery {
-  readonly renderer: THREE.WebGLRenderer
-  private readonly entries: GalleryEntry[] = []
-  private raf = 0
-  private last = 0
-  private running = false
-  private pixelRatio = 1
-  private readonly reducedMotion: boolean
-
-  constructor(canvas: HTMLCanvasElement, slots: { state: OrbState; element: HTMLElement }[], options: { reducedMotion: boolean; random?: Rand }) {
-    this.reducedMotion = options.reducedMotion
-    const rand = options.random ?? Math.random
-    this.renderer = renderer(canvas)
-    this.renderer.autoClear = false
-    for (const slot of slots) {
-      const scene = new THREE.Scene()
-      const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50)
-      camera.position.set(0, 0, 6)
-      const rig = new OrbRig(QUALITY.mini, rand)
-      rig.snapState(slot.state)
-      scene.add(rig.root)
-      this.entries.push({ ...slot, scene, camera, rig, nextPulse: 0.6 + rand(), step: 0 })
-    }
-  }
-
-  resize(width: number, height: number, devicePixelRatio: number) {
-    this.pixelRatio = Math.min(devicePixelRatio, 2)
-    this.renderer.setPixelRatio(this.pixelRatio)
-    this.renderer.setSize(Math.max(1, width), Math.max(1, height), false)
-  }
-
-  start() {
-    if (this.running) return
-    this.running = true
-    this.last = performance.now()
-    const loop = (now: number) => {
-      if (!this.running) return
-      this.raf = requestAnimationFrame(loop)
-      // ~30 fps is plenty for small previews.
-      if (now - this.last < 32) return
-      this.tick(now)
-    }
-    this.raf = requestAnimationFrame(loop)
-  }
-
-  stop() {
-    this.running = false
-    cancelAnimationFrame(this.raf)
-  }
-
-  private tick(now: number) {
-    const dt = Math.min((now - this.last) / 1000, 0.1)
-    this.last = now
-    const canvas = this.renderer.domElement
-    const box = canvas.getBoundingClientRect()
-    this.renderer.setScissorTest(false)
-    this.renderer.clear()
-    this.renderer.setScissorTest(true)
-    for (const e of this.entries) {
-      this.replay(e, dt)
-      const r = e.element.getBoundingClientRect()
-      const w = r.width
-      const h = r.height
-      if (w < 2 || h < 2 || r.bottom < box.top || r.top > box.bottom) continue
-      const x = r.left - box.left
-      const y = box.bottom - r.bottom
-      this.renderer.setViewport(x, y, w, h)
-      this.renderer.setScissor(x, y, w, h)
-      e.camera.aspect = w / h
-      e.camera.updateProjectionMatrix()
-      const visibleH = 2 * e.camera.position.z * Math.tan(THREE.MathUtils.degToRad(e.camera.fov / 2))
-      const minVisible = Math.min(visibleH, visibleH * e.camera.aspect)
-      e.rig.root.scale.setScalar((0.62 * minVisible) / 2)
-      e.rig.update(dt, {
-        motion: this.reducedMotion ? 0.12 : 1,
-        pixelRatio: this.pixelRatio,
-        sizeScale: Math.max(0.3, (0.62 * Math.min(w, h)) / 520),
-        presence: 1,
-        reducedMotion: this.reducedMotion,
-      })
-      this.renderer.render(e.scene, e.camera)
-    }
-  }
-
-  private replay(e: GalleryEntry, dt: number) {
-    if (e.state !== 'response' && e.state !== 'using_tool') return
-    e.nextPulse -= dt
-    if (e.nextPulse > 0) return
-    if (e.state === 'response') {
-      e.rig.pulse('response')
-      e.nextPulse = 2.6
-    } else if (e.step === 0) {
-      e.rig.pulse('tool_started')
-      e.step = 1
-      e.nextPulse = 0.5
-    } else {
-      e.rig.pulse('tool_finished')
-      e.step = 0
-      e.nextPulse = 2.0
-    }
-  }
-
-  dispose() {
-    this.stop()
-    this.entries.forEach((e) => e.rig.dispose())
     this.renderer.dispose()
     this.renderer.forceContextLoss()
   }

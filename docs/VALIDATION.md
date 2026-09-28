@@ -1,3 +1,60 @@
+# Lyra Web 0.4 — orb a rete, anello di lavoro, layout (28 settembre 2026)
+
+Stato finale del lavoro GUI (le due voci seguenti sono passaggi intermedi: il DEV
+state switcher che descrivono è stato poi rimosso). Guida: [WEB.md](WEB.md).
+
+- Orb: globo trasparente fatto di una rete di nodi collegati (celle irregolari),
+  viola solo in alcuni filamenti, niente anello cyan pieno, niente riempimento del
+  corpo, niente scie esterne (interruttori `SHOW_TRAILS`, `RIM_RING`, `BODY_FILL`
+  in `web/src/lib/orbScene.ts`), nessun bagliore bianco in risposta.
+- `thinking` / `using_tool`: la sfera si scompone e diventa un anello obliquo e
+  irregolare che ruota, con l'energia di thinking; torna sfera quando il lavoro
+  finisce (`web/src/lib/ringMorph.ts`). Speaking (predisposto) più vivo.
+- Layout: spazio quasi nero senza cornice, riga sotto l'orb con cosa sta facendo
+  Lyra («Sto pensando…», «Uso la calcolatrice…», dal nome reale del tool su
+  `/ws`), chat che sale sotto l'orb con risposta a blocchi, orb attenuato durante
+  la lettura, barra in basso compatta. Pannello DEV degli stati rimosso.
+
+| Verifica | Esito |
+|---|---|
+| `npm run lint` (ESLint + tsc) | pulito |
+| `npm run test` | **44 passed** (2 file) |
+| `npm run build` | ok; UI 412 kB (128 kB gzip) + orb 556 kB (141 kB gzip); nessun pannello DEV in `dist` |
+| Chat reale con Lyra API locale + MiniCPM sul CT | idle → thinking (anello) → using_tool (`tool_started`/`tool_finished`) → thinking → response → sfera; «Sto pensando…» sotto l'anello; risposta a blocchi |
+| iPhone 390×844 | nessuno scorrimento orizzontale |
+
+Screenshot con Chromium e rendering software (SwiftShader): su GPU reale
+luminosità e fluidità possono differire. NOT VERIFIED ON TARGET LINUX CT.
+
+---
+
+# Lyra Web 0.4 — orb come la reference, niente bianco in risposta (27 settembre 2026)
+
+Rimossa dalla UI la colonna «Stati principali» (era una tavola di riferimento). DEV
+state switcher piccolo in alto a sinistra, solo in `npm run dev`. Orb rifatto sulla
+reference: globo traslucido con una rete di energia (nodi collegati ai vicini, celle
+irregolari; non un gomitolo) su tutta la sfera, più luminosa al bordo e tenue dietro, bordo nitido, viola dentro la struttura, molte particelle
+dentro e fuori, archi a fibre; confrontato fianco a fianco con la reference. La risposta non produce più alcun bagliore bianco (tolti
+starburst, flash e core bianchi; il viola sostituisce il cyan invece di sommarsi).
+
+| Verifica | Esito |
+|---|---|
+| Frontend lint / test | pulito / **38 passed** |
+| Build produzione | ok; né switcher né colonna stati in `dist` |
+| Screenshot sulla Home reale (`npm run dev`, stato forzato dal DEV switcher) | idle, thinking, using_tool, response (350/650/900/1100 ms), error: distinti; nessun bianco in response |
+
+NOT VERIFIED ON TARGET LINUX CT.
+
+---
+---|
+| Frontend lint / test | pulito / **38 passed** (Home senza «Stati principali») |
+| Build produzione | ok; né switcher né colonna stati in `dist` |
+| Screenshot sulla Home reale (`npm run dev`, stato forzato dal DEV switcher) | idle, thinking, using_tool, response, error: distinti, senza linee sottili |
+
+NOT VERIFIED ON TARGET LINUX CT.
+
+---
+
 # Lyra Web 0.4 — replica del riferimento visivo (27 settembre 2026)
 
 Solo frontend (`web/`): layout, card di stato, colonna «Stati principali», orb,

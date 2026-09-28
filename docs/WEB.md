@@ -21,13 +21,13 @@ web/
   vite.config.ts        PWA (manifest + service worker), proxy dev /api e /ws
   public/               favicon.svg, icone PNG (generate da scripts/make-icons.mjs)
   src/
-    App.tsx             hero incorniciato, viste, framing dell'orb, colonna stati
-    components/         LyraOrb, StatusPill (card di stato), StateGallery («Stati
-                        principali»), Backdrop (onde nebulose), BottomNav, ChatView,
-                        ChatComposer, BrainView, NoteMarkdown, ActivityView, icons
+    App.tsx             hero incorniciato, viste, framing dell'orb
+    components/         LyraOrb, StatusPill (card di stato), Backdrop (onde nebulose),
+                        BottomNav, ChatView, ChatComposer, BrainView, NoteMarkdown,
+                        ActivityView, icons
     hooks/              useLyraState (status + /ws + activity), useLyraWebSocket,
                         useChat (conversazione a livello app), useViewport (tastiera iOS),
-                        useElementSize (dimensioni hero, media query)
+                        useElementSize (dimensioni dell'hero)
     lib/                api.ts (unico client HTTP), websocket.ts (unico client /ws),
                         orbState.ts (state machine), orbScene.ts + orbShaders.ts (WebGL),
                         activity.ts (reducer timeline), notes.ts (Markdown Obsidian), frames.ts
@@ -37,11 +37,21 @@ web/
 
 ## Comportamento
 
-L'immagine di riferimento (hero + «Stati principali» + Home/Chat) è la fonte visiva
-canonica. Layout: un **hero** scuro incorniciato (bordo cyan sottile, angoli
-arrotondati, onde nebulose blu sfocate) contiene orb, card di stato, viste e
-navigazione; da 1200×620 px in su compare a destra la colonna **Stati principali**.
-Sotto quella soglia l'hero occupa tutto lo schermo (su telefono senza cornice).
+L'immagine di riferimento è la fonte visiva canonica per hero, orb, card di stato,
+Home e Chat. La sua tavola «Stati principali» è **solo un riferimento visivo** per
+gli stati dell'orb e non fa parte della UI. Layout: un **hero** scuro incorniciato
+(bordo cyan sottile, angoli arrotondati, onde nebulose blu sfocate) che contiene
+orb, card di stato, viste e navigazione. L'orb fluttua in uno spazio quasi nero,
+senza cornice; le onde blu restano solo come velatura in basso.
+
+- **Sotto l'orb**: una riga dice cosa sta facendo Lyra, dagli eventi reali di `/ws`:
+  «Sto pensando…», «Uso la calcolatrice…» (nome del tool reso in italiano:
+  calcolatrice, note, memoria, file, browser; altrimenti il nome del tool),
+  «Qualcosa non è andato»; nulla quando è in attesa. Quando l'orb diventa anello la
+  riga scende sotto l'anello. In Chat la stessa frase sostituisce «Lyra sta
+  elaborando» nell'attesa della risposta.
+- **Navigazione**: pillola compatta con sole icone; l'etichetta compare solo sulla
+  voce attiva (i nomi restano accessibili agli screen reader).
 
 - **Home**: orb grande, protagonista, leggermente sopra il centro; card di stato in
   alto a destra; navigazione in basso. Nessun input, nessun titolo. Sotto l'orb
@@ -50,7 +60,12 @@ Sotto quella soglia l'hero occupa tutto lo schermo (su telefono senza cornice).
 - **Chat**: il composer appare solo qui, placeholder «Come posso aiutarti?».
   `POST /api/chat` con `pack: "auto"`; `+` apre il selettore pack, libro e globo
   sono scorciatoie Knowledge/Browser. La graffetta del riferimento è omessa: l'API
-  non supporta upload. Orb medio in alto, composer grande a vetro con invio blu. Risposta di
+  non supporta upload. Orb medio in alto, composer grande a vetro con invio blu.
+  La conversazione sale nello spazio sotto l'orb e si dissolve verso di esso; la
+  risposta di Lyra compare blocco per blocco (disattivato con reduced motion).
+  Mentre leggi una conversazione conclusa l'orb si attenua; torna pieno appena
+  Lyra lavora, e mentre lavora in Chat è inquadrato un po' più piccolo perché
+  l'anello è più largo della sfera. Risposta di
   Lyra in primo piano (Markdown sicuro), domanda dell'utente discreta, strumenti
   usati in una riga minima (`calculator ✓`). La conversazione vive a livello app:
   passando a Home/Brain non si perde; «Nuova conversazione» chiama `/api/chat/reset`.
@@ -69,61 +84,79 @@ Sotto quella soglia l'hero occupa tutto lo schermo (su telefono senza cornice).
   schermi larghi (il chevron la chiude); su telefono e in Brain/Activity parte
   compatta («● Lyra») e si apre al tap; tap fuori o Esc chiude. Offline: punto
   grigio e «Lyra non raggiungibile». Nessuna pagina Status.
-- **Stati principali** (solo schermi larghi): griglia 2×3 IDLE / THINKING / USING
-  TOOL / RESPONSE / SPEAKING / INTERRUPTED con anteprima viva dell'orb, titolo e
-  sottotitolo italiano; la card dello stato live è evidenziata. È una legenda: le
-  anteprime di speaking/interrupted non significano che Lyra parli (Voice non c'è).
-
 ## Orb (Three.js/WebGL2)
 
 Un solo canvas che riempie l'hero per tutta la sessione; cambiando vista cambia solo
 il framing (grande in Home, medio in alto in Chat, piccolo segno vivo in alto a
-sinistra in Brain/Activity), con easing nel render loop. Le anteprime della colonna
-«Stati principali» sono disegnate da **un solo** renderer WebGL aggiuntivo (scissor
-per card, ~30 fps, qualità "mini").
+sinistra in Brain/Activity), con easing nel render loop.
 
-Obiettivo dal riferimento: una **massa di energia luminosa** leggibile, non una
-matassa di linee. Luce additiva su canvas trasparente; strati, tutti deformati dallo
-stesso campo (respiro, rigonfiamenti, ritmo, impulsi, onda):
+Riferimento: una sfera di energia blu-cyan che si legge come sfera perché il bordo
+è molto più luminoso del centro. Luce additiva su canvas trasparente; strati,
+deformati dallo stesso campo (respiro, rigonfiamenti, ritmo, impulsi, onda):
 
-1. **guscio**: sfera densa con bordo cyan-bianco intenso e alone del bordo;
-2. **vene luminose**: rete di scariche cyan sulla superficie (tratti brevi con
-   svolte nette), luce che scorre lungo le vene;
-3. **strato viola/indaco**: zone e vene viola strutturali sul bordo e in superficie;
-4. **volume interno**: tante particelle-stella, core che pulsa;
-5. **polvere**: particelle che si staccano dalla superficie;
-6. **archi esterni**: pochi archi sottili ed eleganti (cyan, uno o due viola);
-7. **alone** morbido attorno al bordo, flash di risposta, stelle lontane.
+1. **globo**: il riempimento cyan traslucido del corpo è **disattivato**
+   (`BODY_FILL = 0` in `web/src/lib/orbScene.ts`; `1` lo rimette): la sfera è una
+   rete trasparente di energia con le sue particelle;
+2. **bordo**: nessun anello cyan pieno; il contorno è disegnato dalla rete stessa,
+   più fitta e luminosa verso la silhouette, con un alone largo e tenue
+   (`RIM_RING = 0` in `web/src/lib/orbScene.ts`; `1` rimette l'anello);
+3. **rete di energia** finissima su tutta la sfera, fatta come una rete e non
+   come un gomitolo: ~1.900 nodi minuscoli, ognuno collegato ai 2-3 vicini da un
+   tratto breve e leggermente irregolare, così i collegamenti chiudono tante celle
+   piccole; più luminosa verso il bordo, visibile sulla faccia, più tenue
+   sull'emisfero dietro; zone che si accendono e si spengono, scintille lungo i
+   collegamenti; verso il centro della faccia la rete (e le stelle interne) si
+   dirada in modo irregolare, lasciando un centro più vuoto dai contorni casuali;
+   sopra, pochi **filamenti principali** più luminosi (una rete a
+   maglie larghe, ~70 nodi) che attraversano la sfera con curve ampie;
+4. **viola/indaco** solo nei **filamenti** della rete: ogni collegamento è viola
+   o no (scelta casuale per filamento, con una lieve preferenza per alcune zone che
+   migrano lentamente); più filamenti viola in thinking e dopo una risposta. Niente
+   macchie viola nel corpo, sulla superficie o nell'alone. Palette cyan saturo e
+   blu; la rete non schiarisce mai verso il bianco (le parti dense vicino al
+   bordo vanno verso un blu più profondo, così le sovrapposizioni restano blu);
+5. **particelle**: tante stelle interne di dimensioni diverse e una nuvola esterna
+   raccolta attorno alla sfera su tutti i lati, che si dirada;
+6. **scie di energia**: implementate (nastri morbidi che nascono dal bordo, con
+   un ciclo di vita proprio) ma **disattivate** per scelta visiva
+   (`SHOW_TRAILS = false` in `web/src/lib/orbScene.ts`);
+7. **alone** stretto attorno al bordo, poca foschia (contrasto alto).
 
 Ogni stato ha obiettivi propri, interpolati in ~450 ms (nessuna geometria ricreata):
-speed, deform, flow, core, purple, veins, alternate, arcs, arcSpread, orbit,
-compression, dispersion, glow, brightness, warm, saturation, jitter, rhythm, flare
+speed, deform, flow, core, purple, plasma, discharge, alternate, flux, fluxReach, orbit,
+compression, dispersion, glow, brightness, warm, saturation, jitter, rhythm
 (`web/src/lib/orbState.ts`).
 
 | Stato | Resa |
 |---|---|
-| idle | respiro lento e calmo, rete di vene tranquilla, viola visibile |
-| thinking | turbolenza interna, micro-flussi più veloci, viola più leggibile, alternanza cyan/viola, anelli stretti attorno alla sfera |
-| using_tool | energia verso l'esterno: archi ampi e più luminosi, polvere che si allontana, bordo attivo |
-| response | starburst dal centro, alone più intenso, onda di luce dal centro al bordo |
-| error | coesione persa, jitter, tinta verso magenta |
-| offline (`/ws` chiuso) | quasi immobile, desaturato, viola quasi spento |
-| speaking / interrupted / listening | **solo anteprime** (colonna stati e pannello DEV); il runtime live non li produce |
-
-Speaking = pulsazione ritmica organica; interrupted = più aspro, coesione persa,
-rosso/magenta/viola.
+| idle | respiro lento, rete tranquilla, viola discreto, archi lenti |
+| thinking | la sfera si scompone e si ricompone in un **anello obliquo e irregolare** che ruota (grumi luminosi, tratti sottili, ogni ~9 s si schiaccia in un'ellisse), con l'energia di thinking; resta finché il modello ragiona, poi si scompone e torna sfera (`web/src/lib/ringMorph.ts`) |
+| using_tool | stesso anello di thinking (parte a `tool_started` se non c'è già, continua durante il ragionamento successivo); impulso verso l'esterno a `tool_started`, verso l'interno a `tool_finished` |
+| response | **nessun bagliore bianco**: onda cyan dal centro al bordo, scariche più attive, accensione viola sul bordo, particelle che si espandono, poi ritorno a idle |
+| error | perdita di coesione, energia che si degrada, tinta verso magenta |
+| offline (`/ws` chiuso) | desaturato, quasi fermo, campo minimo, alone basso |
+| speaking / interrupted / listening | **predisposti** per la parte voce; il runtime live non li produce |
+| speaking (predisposto) | vivo: più turbolenza e flusso, pulsazioni irregolari "a sillabe" diverse sulla superficie, più viola |
 
 Eventi one-shot reali: `tool_started` → impulso verso l'esterno; `tool_finished` →
 impulso più morbido verso l'interno (distanziato di ≥450 ms dal primo); `response`
 → onda. Uno strumento veloce (calculator ≈ 50 ms) resta visibile come `using_tool`
 fino a 1,2 s dopo `tool_finished`.
 
-In sviluppo (`npm run dev`) un pannello in alto a sinistra forza ogni stato (anche
-le anteprime voice) e lancia gli impulsi, per il confronto visivo; non è incluso
-nella build di produzione (verificato: né JS né CSS in `dist`).
+Il pannello DEV per forzare gli stati è stato rimosso dopo aver confermato gli
+stati; per rivederli si usa una chat reale (`/ws`).
 
-Prestazioni: qualità adattiva (desktop ≈ 24k guscio + 4,5k volume + 3,5k polvere,
-56 vene, 14 tratti viola, 10 archi; mobile e dispositivi deboli ridotti),
+**Anello di lavoro**: quando lo stato è `thinking` o `using_tool` l'orb esegue la
+sequenza ad anello (si restringe, si scompone, si ricompone in un anello obliquo e
+irregolare che ruota); quando il lavoro finisce si scompone di nuovo e si richiude
+in sfera (~2,4 s). Se il lavoro riparte mentre si sta richiudendo, riprende
+dall'anello invece di ricominciare. Con `prefers-reduced-motion` resta sfera.
+È una deformazione di `place()` (`uMorph`, `uScatter`, `uFlatten`, `uShrink`),
+quindi tutta la rete di filamenti la segue; la temporizzazione è in
+`web/src/lib/ringMorph.ts` (testata).
+
+Prestazioni: qualità adattiva (desktop ≈ 20k bordo + 8k interno + 14k particelle
+esterne, rete di ~1.900 nodi, 14 scie di energia; mobile e dispositivi deboli ridotti),
 devicePixelRatio ≤ 2, riduzione dinamica della risoluzione se i frame sono lenti,
 pausa quando la pagina è nascosta, `prefers-reduced-motion` (orb presente,
 movimento ridotto), Three.js in un chunk separato caricato dopo la UI.

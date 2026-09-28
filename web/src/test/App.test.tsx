@@ -45,25 +45,9 @@ describe('Home', () => {
     expect(screen.queryByPlaceholderText('Come posso aiutarti?')).not.toBeInTheDocument()
     expect(screen.queryByText(/come posso aiutarti/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/secondo cervello/i)).not.toBeInTheDocument()
-    // Wide screens show the reference's status card open; no states gallery in a small viewport.
+    // Wide screens show the status card open; the reference's state board is not part of the UI.
+    expect(screen.queryByText(/stati principali/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /dettagli stato/i })).toHaveAttribute('aria-expanded', 'true')
-  })
-})
-
-describe('States gallery', () => {
-  it('shows the six main states beside the hero on large screens', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
-    setup()
-    const gallery = screen.getByRole('complementary', { name: 'Stati principali' })
-    expect(within(gallery).getAllByRole('listitem').map((li) => li.querySelector('.gallery-name')?.textContent)).toEqual([
-      'Idle',
-      'Thinking',
-      'Using tool',
-      'Response',
-      'Speaking',
-      'Interrupted',
-    ])
-    expect(within(gallery).getByText('interrotto')).toBeInTheDocument()
   })
 })
 
@@ -244,6 +228,20 @@ describe('Brain', () => {
 })
 
 describe('Live runtime', () => {
+  it('says what Lyra is doing under the orb, with the real tool name', async () => {
+    const { connect, emit } = setup()
+    connect()
+    const caption = () => document.querySelector('.home-caption')?.textContent
+    expect(caption()).toBe('')
+    emit({ type: 'state', state: 'thinking' })
+    expect(caption()).toBe('Sto pensando…')
+    emit({ type: 'tool_started', tool: 'calculator' })
+    emit({ type: 'state', state: 'using_tool' })
+    expect(caption()).toBe('Uso la calcolatrice…')
+    emit({ type: 'state', state: 'idle' })
+    await waitFor(() => expect(caption()).toBe(''), { timeout: 3000 })
+  })
+
   it('drives the orb and the Activity timeline from real /ws events', async () => {
     const { nav, connect, emit, orbState, orbPulse } = setup()
     connect()

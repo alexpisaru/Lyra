@@ -25,6 +25,7 @@ export function BottomNav({ view, onChange, activityBadge }: BottomNavProps) {
             key={item}
             type="button"
             className="nav-item"
+            aria-label={label}
             aria-current={view === item ? 'page' : undefined}
             onClick={() => onChange(item)}
           >
@@ -32,7 +33,9 @@ export function BottomNav({ view, onChange, activityBadge }: BottomNavProps) {
               <Icon size={22} />
               {item === 'activity' && activityBadge && view !== 'activity' ? <span className="nav-badge" /> : null}
             </span>
-            <span className="nav-label">{label}</span>
+            <span className="nav-label" aria-hidden="true">
+              {label}
+            </span>
           </button>
         ))}
       </div>

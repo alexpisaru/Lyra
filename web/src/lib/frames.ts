@@ -29,8 +29,12 @@ export function orbFrame(view: View, width: number, height: number): OrbFrame {
   }
 }
 
-/** Top (px) of the caption shown under the orb on Home. */
-export function captionTop(frame: OrbFrame, width: number, height: number) {
+/**
+ * Top (px) of the caption shown under the orb on Home. While Lyra works the orb
+ * opens into a ring wider and lower than the sphere, so the caption moves down.
+ */
+export function captionTop(frame: OrbFrame, width: number, height: number, working = false) {
   const minSide = Math.min(width, height)
-  return height / 2 - (frame.y * height) / 2 + (frame.size * minSide) / 2 + 40
+  const extra = working ? frame.size * minSide * 0.3 : 0
+  return height / 2 - (frame.y * height) / 2 + (frame.size * minSide) / 2 + 40 + extra
 }
