@@ -19,7 +19,9 @@ Lyra API 127.0.0.1:8787  ──>  Lyra Core (Ollama/MiniCPM, memory, vault, Chro
 web/
   index.html            meta iOS/PWA, viewport-fit=cover
   vite.config.ts        PWA (manifest + service worker), proxy dev /api e /ws
-  public/               favicon.svg, icone PNG (generate da scripts/make-icons.mjs)
+  brand/lyra-logo.png   logo ufficiale (sorgente, trasparente)
+  public/               favicon, icone PWA/iOS e lyra-logo.png, generate dal logo
+                        con `npm run icons` (scripts/make-icons.mjs, richiede ffmpeg)
   src/
     App.tsx             hero incorniciato, viste, framing dell'orb
     components/         LyraOrb, StatusPill (card di stato), Backdrop (onde nebulose),
@@ -82,8 +84,13 @@ senza cornice; le onde blu restano solo come velatura in basso.
   versione e lo stato della connessione nel tooltip), «Browser: Chromium»,
   «Memoria: attiva», «Knowledge: attivo», con icone lineari. Aperta di default su
   schermi larghi (il chevron la chiude); su telefono e in Brain/Activity parte
-  compatta («● Lyra») e si apre al tap; tap fuori o Esc chiude. Offline: punto
-  grigio e «Lyra non raggiungibile». Nessuna pagina Status.
+  chiusa: **solo il pallino colorato** in un piccolo cerchio (verde attiva, giallo
+  parziale/connessione, grigio non raggiungibile), si apre al tap; tap fuori o Esc
+  chiude. Nessuna pagina Status.
+- **App installata su iPhone**: iOS può impaginare la pagina più corta dello
+  schermo di circa l'altezza della barra di stato, lasciando una fascia vuota in
+  fondo. `src/lib/standalone.ts` misura la differenza (solo in modalità app
+  installata, massimo 120 px) e l'app si estende fino al bordo.
 ## Orb (Three.js/WebGL2)
 
 Un solo canvas che riempie l'hero per tutta la sessione; cambiando vista cambia solo

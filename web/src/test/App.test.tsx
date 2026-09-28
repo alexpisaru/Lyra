@@ -73,13 +73,17 @@ describe('Status', () => {
     expect(head).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('is a compact pill on phones: tap opens, outside tap closes', async () => {
+  it('is just the status dot on phones: tap opens, outside tap closes', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
     const { user } = setup()
     const head = screen.getByRole('button', { name: /dettagli stato/i })
     expect(head).toHaveAttribute('aria-expanded', 'false')
+    // Collapsed: only the dot, no visible text (the status is in the accessible name).
+    expect(head.textContent).toBe('')
+    expect(head.querySelector('.status-dot')).not.toBeNull()
     await user.click(head)
     expect(head).toHaveAttribute('aria-expanded', 'true')
+    expect(head.textContent).not.toBe('')
     fireEvent.pointerDown(document.body)
     expect(head).toHaveAttribute('aria-expanded', 'false')
   })

@@ -93,6 +93,8 @@ button {
 .app {
   position: fixed;
   inset: 0;
+  /* iOS home-screen apps can lay the page out short of the screen (lib/standalone.ts) */
+  bottom: calc(-1 * var(--standalone-gap, 0px));
   overflow: hidden;
 }
 
@@ -238,7 +240,25 @@ button {
 }
 
 .status[data-open='false'] {
-  width: 112px;
+  /* collapsed: just the status dot in a small glass circle */
+  width: 40px;
+  border-radius: 20px;
+}
+
+.status[data-open='false'] {
+  height: 40px;
+  overflow: hidden;
+}
+
+.status[data-open='false'] .status-head {
+  justify-content: center;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.status[data-open='false'] .status-panel {
+  display: none;
 }
 
 .status[data-tone='degraded'],

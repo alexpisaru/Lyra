@@ -15,7 +15,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon-32.png', 'favicon-192.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Lyra',
         short_name: 'Lyra',

@@ -104,8 +104,13 @@ export function StatusPill({ status, reachable, connection, compact = false }: S
         onClick={() => setOpen((value) => !value)}
       >
         <span className="status-dot" />
-        <span className="status-name">{open ? HEADLINE[tone] : 'Lyra'}</span>
-        <ChevronIcon size={15} className="status-chevron" />
+        {/* Closed: only the dot (its colour is the status); the label is in aria-label. */}
+        {open ? (
+          <>
+            <span className="status-name">{HEADLINE[tone]}</span>
+            <ChevronIcon size={15} className="status-chevron" />
+          </>
+        ) : null}
       </button>
       <div id="lyra-status-panel" className="status-panel" role="region" aria-label="Stato di Lyra" aria-hidden={!open}>
         {status && reachable ? (
