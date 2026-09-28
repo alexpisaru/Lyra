@@ -15,6 +15,8 @@ export interface LyraStatus {
   knowledge: { enabled: boolean }
   browser: { enabled: boolean; backend: string | null }
   packs: Pack[]
+  /** Lyra Voice (absent on servers before voice). */
+  voice?: { enabled: boolean; ready?: boolean; stt?: string | null; tts?: string | null; error?: string | null }
 }
 
 export interface ToolResult {
@@ -65,3 +67,12 @@ export type LyraEvent =
   | { type: 'tool_finished'; tool: string; success: boolean }
   | { type: 'response'; content: string }
   | { type: 'error'; message: string }
+
+export interface TranscribeResponse {
+  client_id: string
+  voice_session_id: string
+  voice_turn_id: string
+  text: string
+  language: string | null
+  duration: number
+}

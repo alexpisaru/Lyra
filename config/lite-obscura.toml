@@ -53,3 +53,10 @@ host = "127.0.0.1"
 port = 8787
 api_key = ""           # vuota = nessuna auth; es. python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 allowed_origins = []   # origin esatti per una GUI su altro host; mai "*"
+
+# Lyra Voice (docs/VOICE.md): STT + TTS attorno a /api/chat. Spenta di default.
+# Richiede pip install '.[voice]' e i modelli scaricati a mano (nessun download automatico).
+# [voice]
+# enabled = true
+# stt_model = "/srv/lyra-state/voice/whisper-small"   # faster-whisper (CTranslate2), CPU int8
+# tts_voice = "/srv/lyra-state/voice/piper/it_IT-paola-medium.onnx"

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { api, ApiError, describeError } from '../lib/api'
 import type { Pack } from '../types/api'
+import type { ConverseResult } from '../voice/conversation'
 
 export interface ChatTurn {
   id: number
@@ -22,6 +23,8 @@ export function useChat() {
   const [draft, setDraft] = useState('')
   const [pack, setPack] = useState<Pack>('auto')
   const nextId = useRef(1)
+  // Typed and spoken turns share one conversation: never two requests at once.
+  const inFlight = useRef(false)
 
   const add = useCallback((turn: Omit<ChatTurn, 'id'>) => {
     const id = nextId.current
@@ -29,10 +32,13 @@ export function useChat() {
     setTurns((current) => [...current, { ...turn, id }])
   }, [])
 
-  const send = useCallback(
-    async (text: string, packOverride?: Pack) => {
+  /** One exchange with Lyra; typed Chat and Lyra Voice both come through here. */
+  const converse = useCallback(
+    async (text: string, packOverride?: Pack): Promise<ConverseResult> => {
       const message = text.trim()
-      if (!message || pending) return false
+      if (!message) return { ok: false, reply: null }
+      if (inFlight.current) return { ok: false, reply: null, error: 'Lyra sta già lavorando a una richiesta' }
+      inFlight.current = true
       setPending(true)
       add({ role: 'user', text: message })
       try {
@@ -44,19 +50,25 @@ export function useChat() {
           tools: reply.tool_results.map((t) => ({ name: t.tool_name, success: t.success })),
           incomplete: !reply.complete,
         })
-        return true
+        return { ok: true, reply: reply.content }
       } catch (error) {
         const detail =
           error instanceof ApiError && error.kind === 'invalid' && /capability|pack/i.test(error.message)
             ? 'Richiesta con più capacità: scegli un pack con + e riprova.'
             : describeError(error)
         add({ role: 'lyra', text: detail, error: true })
-        return false
+        return { ok: false, reply: null, error: detail }
       } finally {
+        inFlight.current = false
         setPending(false)
       }
     },
-    [add, pack, pending],
+    [add, pack],
+  )
+
+  const send = useCallback(
+    async (text: string, packOverride?: Pack) => (await converse(text, packOverride)).ok,
+    [converse],
   )
 
   const reset = useCallback(async () => {
@@ -68,7 +80,7 @@ export function useChat() {
     setTurns([])
   }, [])
 
-  return { turns, pending, draft, setDraft, pack, setPack, send, reset }
+  return { turns, pending, draft, setDraft, pack, setPack, send, converse, reset }
 }
 
 export type ChatController = ReturnType<typeof useChat>

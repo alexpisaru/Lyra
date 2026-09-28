@@ -1,4 +1,13 @@
-import type { ChatResponse, LyraStatus, NoteResponse, NotesResponse, Pack, SearchResponse } from '../types/api'
+import type {
+  ChatResponse,
+  LyraStatus,
+  NoteResponse,
+  NotesResponse,
+  Pack,
+  SearchResponse,
+  TranscribeResponse,
+} from '../types/api'
+import type { VoiceIds } from '../voice/identity'
 
 /**
  * The only place that talks HTTP to Lyra API. Same origin: in production Caddy
@@ -50,7 +59,7 @@ function kindFor(status: number): ApiErrorKind {
   return 'server'
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function fetchOk(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   const token = getApiToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -71,7 +80,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const kind = kindFor(response.status)
     throw new ApiError(kind, response.status, kind === 'offline' ? 'Lyra non raggiungibile' : detail)
   }
-  return (await response.json()) as T
+  return response
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await (await fetchOk(path, init)).json()) as T
+}
+
+const VOICE_HEADERS = {
+  client_id: 'X-Lyra-Client-Id',
+  voice_session_id: 'X-Lyra-Voice-Session-Id',
+  voice_turn_id: 'X-Lyra-Voice-Turn-Id',
+} as const
+
+export interface SpokenAudio {
+  ids: VoiceIds
+  audio: ArrayBuffer
+  mimeType: string
 }
 
 export const api = {
@@ -93,6 +118,39 @@ export const api = {
 
   readNote: (path: string, signal?: AbortSignal) =>
     request<NoteResponse>(`/api/knowledge/note?path=${encodeURIComponent(path)}`, { signal }),
+
+  /** Lyra Voice: one utterance -> text. The ids travel as headers, the audio as the body. */
+  transcribe: (audio: Blob, ids: VoiceIds, signal?: AbortSignal) =>
+    request<TranscribeResponse>('/api/voice/transcribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': audio.type || 'audio/webm',
+        [VOICE_HEADERS.client_id]: ids.client_id,
+        [VOICE_HEADERS.voice_session_id]: ids.voice_session_id,
+        [VOICE_HEADERS.voice_turn_id]: ids.voice_turn_id,
+      },
+      body: audio,
+      signal,
+    }),
+
+  /** Lyra Voice: text -> speech for this device; the answer echoes the ids it belongs to. */
+  speak: async (text: string, ids: VoiceIds, signal?: AbortSignal): Promise<SpokenAudio> => {
+    const response = await fetchOk('/api/voice/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...ids, text }),
+      signal,
+    })
+    return {
+      ids: {
+        client_id: response.headers.get(VOICE_HEADERS.client_id) ?? '',
+        voice_session_id: response.headers.get(VOICE_HEADERS.voice_session_id) ?? '',
+        voice_turn_id: response.headers.get(VOICE_HEADERS.voice_turn_id) ?? '',
+      },
+      audio: await response.arrayBuffer(),
+      mimeType: response.headers.get('Content-Type') ?? 'audio/wav',
+    }
+  },
 }
 
 export function describeError(error: unknown): string {

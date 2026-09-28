@@ -27,6 +27,8 @@ from starlette.websockets import WebSocketDisconnect
 from openjarvis.core.events import EventType
 from openjarvis.core.types import Message, Role
 from openjarvis.tools.packs import PACKS
+from openjarvis.voice.routes import ID_HEADERS as VOICE_ID_HEADERS
+from openjarvis.voice.routes import install_voice_routes
 
 Pack = Literal["auto", "chat", "general", "files", "memory", "knowledge", "browser"]
 MAX_MESSAGE_CHARS = 4000
@@ -101,8 +103,8 @@ def _same_origin(origin: str, host: str | None) -> bool:
     return bool(host) and parts.netloc.lower() == host.lower()
 
 
-def create_app(config, *, system=None, health_engine=None) -> FastAPI:
-    """Build the app. *system*/*health_engine* are injectable for tests."""
+def create_app(config, *, system=None, health_engine=None, voice=None) -> FastAPI:
+    """Build the app. *system*/*health_engine*/*voice* are injectable for tests."""
     from openjarvis import __version__
 
     api = config.api
@@ -111,6 +113,10 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
     history: list[Message] = []
     status_cache: dict[str, Any] = {"at": 0.0, "reachable": None}
     owned = system is None
+    if voice is None and config.voice.enabled:
+        from openjarvis.voice import VoiceService
+
+        voice = VoiceService.from_config(config.voice)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -132,9 +138,13 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
         for event_type, callback in subscriptions:
             system.bus.subscribe(event_type, callback)
         app.state.system = system
+        # Voice models load in the background: the API is usable while they warm up.
+        warming = asyncio.create_task(asyncio.to_thread(voice.warm)) if voice else None
         try:
             yield
         finally:
+            if warming is not None:
+                await asyncio.gather(warming, return_exceptions=True)
             for event_type, callback in subscriptions:
                 system.bus.unsubscribe(event_type, callback)
             health_engine.close()
@@ -154,7 +164,8 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
             CORSMiddleware,
             allow_origins=list(api.allowed_origins),
             allow_methods=["GET", "POST"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", *VOICE_ID_HEADERS],
+            expose_headers=list(VOICE_ID_HEADERS),
         )
 
     def _token_ok(presented: str | None) -> bool:
@@ -225,6 +236,7 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
                 "backend": config.browser.backend if config.tools.browser else None,
             },
             "packs": ["auto", *PACKS],
+            "voice": voice.status() if voice else {"enabled": False},
         }
 
     def _ask(message, pack):
@@ -324,6 +336,9 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         return {"path": path, "content": content}
 
+    # Lyra Voice: STT/TTS only; spoken text goes through POST /api/chat like typed text.
+    install_voice_routes(app, guard, json_only)
+
     @app.websocket("/ws")
     async def websocket(ws: WebSocket):
         origin_ok = _origin_ok(ws.headers.get("origin"), ws.headers.get("host"))
@@ -368,6 +383,7 @@ def create_app(config, *, system=None, health_engine=None) -> FastAPI:
                     task.cancel()
 
     app.state.hub = hub
+    app.state.voice = voice
     app.state.history = history
     app.state.busy = busy
     return app

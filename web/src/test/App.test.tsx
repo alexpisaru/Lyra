@@ -332,10 +332,11 @@ describe('Mobile', () => {
   })
 })
 
-describe('Voice across views', () => {
-  function fakeMic() {
+describe('Voice: Home and Chat share one session', () => {
+  function fakeMic({ deny = false } = {}) {
     const tracks: { stop: ReturnType<typeof vi.fn>; readyState: string; addEventListener: () => void }[] = []
     const getUserMedia = vi.fn(async () => {
+      if (deny) throw new DOMException('denied', 'NotAllowedError')
       const track = {
         readyState: 'live',
         stop: vi.fn(() => {
@@ -350,26 +351,105 @@ describe('Voice across views', () => {
     vi.stubGlobal('AudioContext', undefined)
     return { tracks, getUserMedia }
   }
+  const voiceState = () => document.querySelector('.app')?.getAttribute('data-voice')
+  const micButton = () => screen.getByRole('button', { name: /microfono/i })
+  const routes = { '/api/knowledge/notes': () => json({ notes: [], skipped: 0 }) }
 
-  it.each(['Home', 'Brain', 'Activity'])(
-    'Chat LISTENING -> %s turns the microphone OFF and back in Chat it stays off',
-    async (target) => {
-      const { tracks, getUserMedia } = fakeMic()
-      const { user, nav } = setup({ '/api/knowledge/notes': () => json({ notes: [], skipped: 0 }) })
-      await nav('Chat')
-      await user.click(screen.getByRole('button', { name: 'Attiva il microfono' }))
-      expect(document.querySelector('.app')).toHaveAttribute('data-voice', 'listening')
+  it('Home mic OFF -> LISTENING, and the orb follows the voice when idle', async () => {
+    const { getUserMedia } = fakeMic()
+    const { user, connect, orbState } = setup(routes)
+    connect()
+    expect(orbState()).toBe('idle')
+    const mic = within(screen.getByRole('region', { name: 'Home' })).getByRole('button', {
+      name: 'Attiva il microfono',
+    })
+    await user.click(mic)
+    expect(voiceState()).toBe('listening')
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(orbState()).toBe('listening')
+    expect(document.querySelector('.home-caption')).toHaveTextContent('Ti ascolto')
+  })
 
-      await nav(target)
-      expect(document.querySelector('.app')).toHaveAttribute('data-voice', 'off')
-      expect(tracks).toHaveLength(1)
-      expect(tracks[0].stop).toHaveBeenCalledTimes(1)
-      expect(tracks[0].readyState).toBe('ended')
+  it('Home -> Chat -> Home while LISTENING keeps the same live microphone', async () => {
+    const { tracks, getUserMedia } = fakeMic()
+    const { user, nav } = setup(routes)
+    await user.click(micButton())
+    await nav('Chat')
+    expect(voiceState()).toBe('listening')
+    expect(micButton()).toHaveAttribute('aria-pressed', 'true') // Chat control shows the same session
+    await nav('Home')
+    expect(voiceState()).toBe('listening')
+    expect(micButton()).toHaveAttribute('aria-pressed', 'true')
+    expect(getUserMedia).toHaveBeenCalledTimes(1) // one stream, never reopened
+    expect(tracks[0].stop).not.toHaveBeenCalled()
+  })
 
-      await nav('Chat')
-      expect(document.querySelector('.app')).toHaveAttribute('data-voice', 'off')
-      expect(screen.getByRole('button', { name: 'Attiva il microfono' })).toHaveAttribute('aria-pressed', 'false')
-      expect(getUserMedia).toHaveBeenCalledTimes(1) // not restarted
-    },
-  )
+  it('Chat -> Home while LISTENING keeps the mic; stopping in Home is seen in Chat', async () => {
+    const { tracks } = fakeMic()
+    const { user, nav } = setup(routes)
+    await nav('Chat')
+    await user.click(micButton())
+    await nav('Home')
+    expect(voiceState()).toBe('listening')
+    expect(tracks[0].stop).not.toHaveBeenCalled()
+    await user.click(micButton()) // stop from Home
+    expect(tracks[0].stop).toHaveBeenCalledTimes(1)
+    await nav('Chat')
+    expect(micButton()).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it.each([
+    ['Home', 'Brain'],
+    ['Home', 'Activity'],
+    ['Chat', 'Brain'],
+    ['Chat', 'Activity'],
+  ])('%s -> %s stops and releases the mic; returning never restarts it', async (from, to) => {
+    const { tracks, getUserMedia } = fakeMic()
+    const { user, nav } = setup(routes)
+    if (from === 'Chat') await nav('Chat')
+    await user.click(micButton())
+    await nav(to)
+    expect(voiceState()).toBe('off')
+    expect(tracks[0].stop).toHaveBeenCalledTimes(1)
+    expect(tracks[0].readyState).toBe('ended')
+    await nav('Home')
+    expect(voiceState()).toBe('off')
+    await nav('Chat')
+    expect(voiceState()).toBe('off')
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('backgrounding releases the mic in Home', async () => {
+    const { tracks } = fakeMic()
+    const { user } = setup(routes)
+    await user.click(micButton())
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    visibility.mockRestore()
+    expect(voiceState()).toBe('off')
+    expect(tracks[0].stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('a microphone error reaches the orb and the caption when Lyra is idle', async () => {
+    fakeMic({ deny: true })
+    const { user, connect, orbState } = setup(routes)
+    connect()
+    await user.click(micButton())
+    expect(voiceState()).toBe('error')
+    expect(orbState()).toBe('error')
+    expect(document.querySelector('.home-caption')).toHaveTextContent(/negato/)
+  })
+
+  it('runtime work has priority over the voice state', async () => {
+    fakeMic()
+    const { user, connect, emit, orbState } = setup(routes)
+    connect()
+    await user.click(micButton())
+    expect(orbState()).toBe('listening')
+    emit({ type: 'state', state: 'thinking' })
+    expect(orbState()).toBe('thinking')
+    expect(document.querySelector('.home-caption')).toHaveTextContent('Sto pensando')
+  })
 })

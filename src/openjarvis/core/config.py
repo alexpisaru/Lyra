@@ -147,6 +147,59 @@ class ApiConfig:
 
 
 @dataclass
+class VoiceConfig:
+    """Lyra Voice transport (STT + TTS around the normal chat path). Off by default.
+
+    Models are never downloaded unless allow_download = true: point stt_model at a
+    local CTranslate2 directory (or a size name already under models_dir) and
+    tts_voice at a Piper .onnx file with its .onnx.json next to it.
+    """
+
+    enabled: bool = False
+    stt_provider: str = "faster-whisper"
+    stt_model: str = "small"
+    stt_compute_type: str = "int8"
+    stt_threads: int = 0  # 0 = library default
+    stt_language: str = "it"  # always passed to Whisper: no auto-detection
+    # Inference knobs, to benchmark on the real CT (defaults favour latency).
+    stt_beam_size: int = 1
+    stt_vad_filter: bool = True
+    tts_provider: str = "piper"
+    tts_voice: str = ""
+    models_dir: str = ""
+    allow_download: bool = False
+    max_audio_bytes: int = 4_000_000
+    max_audio_seconds: float = 30.0
+    max_speech_chars: int = 600
+
+    def validate(self):
+        if self.stt_provider not in ("faster-whisper",):
+            raise ValueError('voice.stt_provider must be "faster-whisper"')
+        if self.tts_provider not in ("piper",):
+            raise ValueError('voice.tts_provider must be "piper"')
+        if not self.stt_model.strip():
+            raise ValueError("voice.stt_model must not be empty")
+        if not re.fullmatch(r"[a-z]{2}", self.stt_language):
+            raise ValueError('voice.stt_language must be a language code like "it"')
+        for name in ("tts_voice", "models_dir"):
+            value = getattr(self, name)
+            if value and not Path(value).is_absolute():
+                raise ValueError(f"voice.{name} must be an absolute path")
+        if self.enabled and not self.tts_voice:
+            raise ValueError("voice.enabled=true requires voice.tts_voice (a Piper .onnx file)")
+        limits = [
+            (self.stt_threads, 0, 64),
+            (self.stt_beam_size, 1, 10),
+            (self.max_audio_bytes, 10_000, 20_000_000),
+            (self.max_audio_seconds, 1, 120),
+            (self.max_speech_chars, 50, 4000),
+        ]
+        if any(not low <= value <= high for value, low, high in limits):
+            raise ValueError("voice limits outside the allowed range")
+        return self
+
+
+@dataclass
 class JarvisConfig:
     intelligence: IntelligenceConfig = field(default_factory=IntelligenceConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
@@ -157,12 +210,14 @@ class JarvisConfig:
     knowledge: KnowledgeConfig = field(default_factory=KnowledgeConfig)
     browser: BrowserConfig = field(default_factory=BrowserConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
 
     def validate(self):
         from openjarvis.tools.packs import PACKS
 
         self.browser.validate()
         self.api.validate()
+        self.voice.validate()
         if self.engine.model:
             if self.intelligence.model not in (self.engine.model, IntelligenceConfig.model):
                 raise ValueError("engine.model and intelligence.model disagree; set only one")

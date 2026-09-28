@@ -47,7 +47,13 @@ status_cache_seconds = 30.0
 | `GET /api/knowledge/notes` | Elenco delle note del vault: `{"notes": [{"path", "title"}], "skipped"}` |
 | `GET /api/knowledge/search?q=...` | Ricerca nel vault (stesso `MarkdownVault` di `notes_search`) |
 | `GET /api/knowledge/note?path=...` | Lettura nota (stesso `MarkdownVault.read` di `notes_read`) |
+| `POST /api/voice/transcribe` | Lyra Voice: un enunciato audio (`audio/*`, header id) → testo. Solo STT, vedi [VOICE.md](VOICE.md) |
+| `POST /api/voice/speak` | Lyra Voice: `{client_id, voice_session_id, voice_turn_id, text}` → `audio/wav` per chi lo chiede. Solo TTS |
 | `GET /ws` | WebSocket eventi in tempo reale (solo server → client) |
+
+`/api/status` include anche `voice`: `{"enabled": false}` oppure
+`{"enabled": true, "ready", "stt", "tts", "error"}`. Il testo parlato passa da
+`POST /api/chat` come quello scritto: la voce non ha un percorso di conversazione suo.
 
 ### POST /api/chat
 
@@ -187,6 +193,6 @@ hardening di base). Installazione e smoke: [SERVER_ACCEPTANCE.md](SERVER_ACCEPTA
 
 ## Non ancora implementato
 
-GUI/PWA, Voice (stati listening/speaking/interrupted), Laya, modello 4B Windows,
+Voice: wake word, barge-in (fase 3), streaming dell'audio; Laya, modello 4B Windows,
 scrittura note via API, conferma click/type via API, streaming dei token,
 persistenza delle conversazioni, multiutente, esposizione Internet/OAuth.

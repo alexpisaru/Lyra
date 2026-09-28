@@ -91,28 +91,36 @@ senza cornice; le onde blu restano solo come velatura in basso.
   schermo di circa l'altezza della barra di stato, lasciando una fascia vuota in
   fondo. `src/lib/standalone.ts` misura la differenza (solo in modalità app
   installata, massimo 120 px) e l'app si estende fino al bordo.
-## Lyra Voice — fase 1 (microfono)
+## Lyra Voice (microfono e conversazione vocale)
 
-Solo l'infrastruttura del microfono: **niente** wake word, ascolto in background,
-STT, VAD, TTS o invio di audio. Il pulsante microfono sta nel composer della Chat.
+Niente wake word né ascolto in background: il microfono si accende solo da un tocco.
+Architettura completa, API, provider e installazione: [VOICE.md](VOICE.md).
 
-- `src/voice/types.ts`: stati `off | listening | thinking | speaking | interrupted |
-  error` (in fase 1 si usano off, listening, error), permesso, vincoli audio
-  (`echoCancellation`, `noiseSuppression`, `autoGainControl`).
+- **Superfici voce** (`src/voice/surfaces.ts`): Home (primaria, pulsante sotto
+  l'orb) e Chat (nel composer). Due controlli sulla **stessa** sessione, posseduta
+  da `App`: tra Home e Chat restano microfono, `MediaStream`, `AudioContext`, VAD e
+  turno in corso. Brain, Activity o qualunque altra vista chiamano `stopListening()`
+  (tracce ferme, `AudioContext` chiuso, VAD e turno annullati, stato off); tornando
+  in Home o Chat non si riaccende da solo. Background/`pagehide`: stesso rilascio.
+- **Conversazione** (`src/voice/conversation.ts`): listening → (VAD locale) →
+  thinking (`/api/voice/transcribe`, poi `chat.converse`, lo stesso invio della Chat)
+  → speaking (`/api/voice/speak`, una frase alla volta) → listening. I turni parlati
+  compaiono in Chat come turni normali. Un audio suona solo se `client_id`,
+  `voice_session_id` e `voice_turn_id` sono quelli correnti.
 - `src/voice/useVoiceSession.ts`: `voiceState`, `micPermission`, `hasLiveTrack`,
-  `inputLevel`, `error`, `startListening()`, `stopListening()`. La UI non tocca mai
-  `MediaStream`. `getUserMedia` parte direttamente dal tocco; spegnere ferma ogni
-  traccia, scollega i nodi WebAudio e chiude l'`AudioContext` (microfono fisico
-  rilasciato, non solo muto). Pagina nascosta, `pagehide`, traccia terminata dal
-  sistema, smontaggio e il passaggio a un'altra vista (Home, Brain, Activity: lì
-  non c'è il pulsante) riportano a off; tornando in Chat non si riaccende da solo. Un permesso concesso dopo uno stop viene
-  rilasciato subito.
-- `src/voice/levelMeter.ts`: livello d'ingresso 0..1 da un `AnalyserNode` (mai
-  collegato alle casse; nulla registrato); senza `AudioContext` il livello resta 0.
-- Il microfono richiede un'origine sicura (HTTPS, es. Tailscale/Caddy): su HTTP in
-  LAN il browser non espone `getUserMedia` e il pulsante mostra l'errore.
-- `orbStateWithVoice` (`src/lib/orbState.ts`) combina stato runtime e voce per le
-  fasi successive; in fase 1 l'orb segue solo il runtime.
+  `inputLevel`, `error`, `startListening()`, `stopListening()`; la UI non tocca mai
+  `MediaStream`. `getUserMedia` e l'`AudioContext` partono dal tocco (iOS); lo stesso
+  `AudioContext` misura il livello e riproduce la voce di Lyra.
+- `src/voice/levelMeter.ts` (livello per la UI + frame RMS per il VAD, mai collegato
+  alle casse), `vad/` (VAD sostituibile), `recorder.ts` (un `MediaRecorder` per
+  enunciato, formato per feature detection), `player.ts`, `identity.ts`,
+  `speechText.ts` (Markdown → frasi da dire).
+- Il pulsante: tocco = accendi; con la conversazione attiva (anche durante thinking,
+  speaking o un errore di turno) tocco = spegni. L'anello di livello solo in ascolto.
+- Il microfono richiede un'origine sicura (HTTPS, es. Tailscale/Caddy).
+- **Orb e didascalia**: `orbStateWithVoice` dà priorità al runtime (thinking,
+  using_tool, offline…); con runtime idle l'orb segue la voce. La didascalia in Home
+  fa lo stesso (`voiceCaption`).
 
 ## Orb (Three.js/WebGL2)
 

@@ -10,9 +10,11 @@ import { useChat } from './hooks/useChat'
 import { useLyraState, type LyraStateOptions } from './hooks/useLyraState'
 import { useElementSize } from './hooks/useElementSize'
 import { useViewport } from './hooks/useViewport'
+import { MicButton } from './components/MicButton'
+import { isVoiceSurface, voiceCaption } from './voice/surfaces'
 import { useVoiceSession } from './voice/useVoiceSession'
 import { captionTop, orbFrame } from './lib/frames'
-import { workCaption } from './lib/orbState'
+import { orbStateWithVoice, workCaption } from './lib/orbState'
 
 const VIEWS: View[] = ['home', 'chat', 'brain', 'activity']
 
@@ -25,8 +27,10 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   const lyra = useLyraState(live)
   const chat = useChat()
   const viewport = useViewport()
-  // Microphone session (Lyra Voice, phase 1): opened only by the mic button.
-  const voice = useVoiceSession()
+  // The one microphone session (Lyra Voice): Home and Chat are two controls on it.
+  // Spoken text goes through the same chat conversation as typed text.
+  const converse = chat.converse
+  const voice = useVoiceSession({ converse: (text) => converse(text) })
   const heroRef = useRef<HTMLDivElement>(null)
   const hero = useElementSize(heroRef)
   const [view, setView] = useState<View>(initialView)
@@ -35,11 +39,11 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   // Connection rows are bookkeeping; only real Lyra activity lights the badge.
   const activityCount = lyra.activity.filter((entry) => entry.kind !== 'connection').length
 
-  // The mic control lives in the Chat composer: never leave a live microphone
-  // behind in a view without it. Coming back to Chat does not restart it.
+  // Home <-> Chat keeps the session as it is; any view without a mic control
+  // releases it. Returning to Home or Chat never restarts it.
   const { stopListening } = voice
   useEffect(() => {
-    if (view !== 'chat') stopListening()
+    if (!isVoiceSurface(view)) stopListening()
   }, [view, stopListening])
 
   const navigate = (next: View) => {
@@ -67,12 +71,17 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
     return base
   }, [view, hero.width, hero.height, reading, working])
 
-  const orbState = lyra.orbState
+  // Runtime work has priority; an idle orb follows the voice session.
+  const orbState = orbStateWithVoice(lyra.orbState, voice.voiceState)
   const signal = lyra.signal
 
   const work = workCaption(lyra.orbState, lyra.tool)
   const caption =
-    lyra.orbState === 'offline' ? (lyra.reachable === false ? 'Lyra non raggiungibile' : 'Connessione…') : work
+    lyra.orbState === 'offline'
+      ? lyra.reachable === false
+        ? 'Lyra non raggiungibile'
+        : 'Connessione…'
+      : (work ?? voiceCaption(voice.voiceState, voice.error))
 
   return (
     <div
@@ -105,6 +114,9 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
             >
               {caption ?? ''}
             </p>
+            <div className="home-voice">
+              <MicButton voice={voice} />
+            </div>
           </section>
         ) : null}
         {view === 'chat' ? <ChatView chat={chat} status={lyra.status} online={lyra.online} working={work} voice={voice} /> : null}

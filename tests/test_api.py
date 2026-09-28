@@ -357,6 +357,9 @@ def test_no_generic_browser_or_write_endpoints(lyra):
         "/api/knowledge/search",
         "/api/knowledge/note",
         "/api/knowledge/notes",
+        # Lyra Voice: STT/TTS for the requesting device only (see test_voice_api.py)
+        "/api/voice/transcribe",
+        "/api/voice/speak",
         "/ws",
     }
     assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404

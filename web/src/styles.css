@@ -1804,3 +1804,35 @@ button {
   color: #ffb4a8;
   background: rgba(255, 110, 90, 0.12);
 }
+
+/* Home: the primary voice control, centred between the orb and the nav */
+.home-voice {
+  position: absolute;
+  left: 50%;
+  bottom: calc(54px + var(--nav-bottom) + 26px);
+  transform: translateX(-50%);
+}
+
+.home-voice .mic-button {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(96, 156, 255, 0.24);
+  background: linear-gradient(180deg, rgba(10, 18, 36, 0.7), rgba(6, 11, 24, 0.78));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.home-voice .mic-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+.home-voice .mic-button[data-voice='listening'] {
+  background: rgba(45, 123, 255, 0.24);
+}
+
+@media (max-width: 719px) {
+  .home-voice {
+    bottom: calc(52px + var(--nav-bottom) + 22px);
+  }
+}

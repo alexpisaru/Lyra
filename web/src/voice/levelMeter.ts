@@ -13,9 +13,14 @@ export function audioContextClass(): AudioContextCtor | null {
   return w.AudioContext ?? w.webkitAudioContext ?? null
 }
 
+export type FrameListener = (rms: number, now: number, running: boolean) => void
+
 export interface LevelMeter {
-  /** Connect a stream and start reporting levels (0..1). */
-  attach: (stream: MediaStream, onLevel: (level: number) => void) => void
+  /**
+   * Connect a stream and start reporting levels (0..1) for the UI, plus every
+   * analysis frame (raw RMS, time, whether audio is running) for the VAD.
+   */
+  attach: (stream: MediaStream, onLevel: (level: number) => void, onFrame?: FrameListener) => void
   /** Disconnect nodes, stop the loop and close the AudioContext. Idempotent. */
   close: () => void
   readonly context: AudioContext | null
@@ -41,7 +46,7 @@ export function createLevelMeter(): LevelMeter {
     }
   }
 
-  const attach: LevelMeter['attach'] = (stream, onLevel) => {
+  const attach: LevelMeter['attach'] = (stream, onLevel, onFrame) => {
     if (closed || !context) return
     try {
       source = context.createMediaStreamSource(stream)
@@ -57,13 +62,21 @@ export function createLevelMeter(): LevelMeter {
     const data = new Float32Array(analyser.fftSize)
     let smoothed = 0
     let last = 0
+    let lastResume = 0
     const tick = (now: number) => {
-      if (closed || !analyser) return
+      if (closed || !analyser || !context) return
       frame = requestAnimationFrame(tick)
+      // iOS suspends/interrupts the context (calls, Siri): try to resume, tell the VAD
+      const running = context.state === 'running'
+      if (!running && now - lastResume > 1000) {
+        lastResume = now
+        void context.resume?.().catch(() => undefined)
+      }
       analyser.getFloatTimeDomainData(data)
       let sum = 0
       for (let i = 0; i < data.length; i += 1) sum += data[i] * data[i]
       const rms = Math.sqrt(sum / data.length)
+      onFrame?.(rms, now, running)
       // speech RMS is ~0.01..0.2: map to 0..1 on a soft curve
       const level = Math.min(1, Math.sqrt(rms * 6))
       smoothed = smoothed * 0.7 + level * 0.3

@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { api } from '../lib/api'
+import { VoiceConversation, type ConversationDeps, type ConverseResult } from './conversation'
+import { getClientId, newVoiceId } from './identity'
 import { createLevelMeter, type LevelMeter } from './levelMeter'
+import { createSpeechPlayer } from './player'
+import { createUtteranceRecorder, pickRecorderMimeType } from './recorder'
 import { MIC_CONSTRAINTS, type MicPermission, type VoiceSession, type VoiceState } from './types'
+import { createEnergyVad } from './vad/energyVad'
+
+export interface VoiceSessionOptions {
+  /**
+   * The conversation path for spoken text: the same chat send as typed text.
+   * Without it the session only opens the mic and shows the level (Phase 1).
+   */
+  converse?: (text: string) => Promise<ConverseResult>
+  /** Test seam: replace transport/audio pieces of the conversation. */
+  conversation?: Partial<ConversationDeps>
+}
 
 function describe(error: unknown): { message: string; permission: MicPermission | null } {
   const name = error instanceof DOMException || error instanceof Error ? error.name : ''
@@ -22,9 +38,11 @@ function describe(error: unknown): { message: string; permission: MicPermission 
 /**
  * The microphone session: opens it only from a user gesture, exposes a live
  * input level, and releases the physical microphone on stop, when the page is
- * hidden and on unmount. Nothing is recorded, stored or sent.
+ * hidden and on unmount. With `converse` it also runs the voice conversation
+ * (local VAD -> utterance -> STT -> chat -> TTS on this device); utterances
+ * live in memory only for their own request, nothing is stored.
  */
-export function useVoiceSession(): VoiceSession {
+export function useVoiceSession(options: VoiceSessionOptions = {}): VoiceSession {
   const [voiceState, setVoiceState] = useState<VoiceState>('off')
   const [micPermission, setMicPermission] = useState<MicPermission>('unknown')
   const [hasLiveTrack, setHasLiveTrack] = useState(false)
@@ -37,10 +55,18 @@ export function useVoiceSession(): VoiceSession {
   // so a getUserMedia that resolves late is released instead of being kept.
   const token = useRef(0)
   const mounted = useRef(true)
+  const conversation = useRef<VoiceConversation | null>(null)
+  // Latest options for callbacks created at start (the chat send changes identity).
+  const latest = useRef(options)
+  useEffect(() => {
+    latest.current = options
+  })
 
   /** Stop every track and close the audio graph. No React state here. */
   const release = useCallback(() => {
     token.current += 1
+    conversation.current?.stop()
+    conversation.current = null
     const current = stream.current
     stream.current = null
     current?.getTracks().forEach((track) => track.stop())
@@ -49,12 +75,28 @@ export function useVoiceSession(): VoiceSession {
   }, [])
 
   const stopListening = useCallback(() => {
+    // A live session ends in off; a failed open keeps showing its error.
+    const hadSession = stream.current !== null
     release()
     if (!mounted.current) return
     setHasLiveTrack(false)
     setInputLevel(0)
-    setVoiceState((state) => (state === 'error' ? 'error' : 'off'))
+    if (hadSession) setError(null)
+    setVoiceState((state) => (state === 'error' && !hadSession ? 'error' : 'off'))
   }, [release])
+
+  /** The mic cannot go on (audio suspended, no recorder): release it and say why. */
+  const failSession = useCallback(
+    (message: string) => {
+      release()
+      if (!mounted.current) return
+      setHasLiveTrack(false)
+      setInputLevel(0)
+      setError(message)
+      setVoiceState('error')
+    },
+    [release],
+  )
 
   const startListening = useCallback(async () => {
     release() // never two sessions at once
@@ -101,10 +143,45 @@ export function useVoiceSession(): VoiceSession {
     setHasLiveTrack(opened.getAudioTracks().some((track) => track.readyState === 'live'))
     setInputLevel(0)
     setVoiceState('listening')
-    levels.attach(opened, (level) => {
-      if (stream.current === opened) setInputLevel(level)
-    })
-  }, [release, stopListening])
+
+    const converse = latest.current.converse
+    let talk: VoiceConversation | null = null
+    if (converse) {
+      const mimeType = pickRecorderMimeType()
+      talk = new VoiceConversation({
+        clientId: getClientId,
+        newId: newVoiceId,
+        vad: createEnergyVad(),
+        createRecorder: () => (mimeType === null ? null : createUtteranceRecorder(opened, mimeType)),
+        transcribe: async (audio, ids, signal) => {
+          const heard = await api.transcribe(audio, ids, signal)
+          return { ids: heard, text: heard.text }
+        },
+        converse: (text) => (latest.current.converse ?? converse)(text),
+        speak: api.speak,
+        player: createSpeechPlayer(() => levels.context),
+        onState: (state, message) => {
+          if (conversation.current !== talk || !mounted.current) return
+          setVoiceState(state)
+          setError(message)
+        },
+        onFatal: (message) => {
+          if (conversation.current === talk) failSession(message)
+        },
+        ...latest.current.conversation,
+      })
+      conversation.current = talk
+    }
+    levels.attach(
+      opened,
+      (level) => {
+        if (stream.current === opened) setInputLevel(level)
+      },
+      (rms, now, running) => {
+        if (conversation.current === talk) talk?.frame(rms, now, running)
+      },
+    )
+  }, [release, stopListening, failSession])
 
   // No background listening: hidden or leaving the page releases the microphone.
   useEffect(() => {

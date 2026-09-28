@@ -290,7 +290,7 @@ describe('MicButton', () => {
   })
 })
 
-describe('voice states for the orb (later phases)', () => {
+describe('voice states for the orb', () => {
   it('declares every voice state; real work always wins over the voice', () => {
     expect(VOICE_STATES).toEqual(['off', 'listening', 'thinking', 'speaking', 'interrupted', 'error'])
     expect(orbStateWithVoice('idle', 'off')).toBe('idle')
@@ -298,6 +298,143 @@ describe('voice states for the orb (later phases)', () => {
     expect(orbStateWithVoice('idle', 'speaking')).toBe('speaking')
     expect(orbStateWithVoice('thinking', 'listening')).toBe('thinking')
     expect(orbStateWithVoice('offline', 'listening')).toBe('offline')
-    expect(orbStateWithVoice('idle', 'error')).toBe('idle')
+    expect(orbStateWithVoice('idle', 'error')).toBe('error')
+    expect(orbStateWithVoice('idle', 'interrupted')).toBe('interrupted')
+    expect(orbStateWithVoice('using_tool', 'error')).toBe('using_tool')
+  })
+})
+
+// ---------------------------------------------------------------- Phase 2 pipeline
+
+describe('voice session with conversation (Phase 2)', () => {
+  class FakeRecorder extends EventTarget {
+    static isTypeSupported = (type: string) => type === 'audio/mp4'
+    static live = 0
+    state: 'inactive' | 'recording' = 'inactive'
+    mimeType = 'audio/mp4'
+    start() {
+      this.state = 'recording'
+      FakeRecorder.live += 1
+    }
+    stop() {
+      if (this.state === 'inactive') return
+      this.state = 'inactive'
+      FakeRecorder.live -= 1
+      const event = new Event('dataavailable') as Event & { data: Blob }
+      event.data = new Blob([new Uint8Array(5000)], { type: 'audio/mp4' })
+      this.dispatchEvent(event)
+      this.dispatchEvent(new Event('stop'))
+    }
+  }
+
+  function pipeline() {
+    const contexts = fakeAudio()
+    const { streams } = fakeMicrophone()
+    vi.stubGlobal('MediaRecorder', FakeRecorder)
+    FakeRecorder.live = 0
+    let tick: ((now: number) => void) | null = null
+    vi.stubGlobal('requestAnimationFrame', (cb: (now: number) => void) => {
+      tick = cb
+      return 1
+    })
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      tick = null
+    })
+    let level = 0.001
+    let now = 0
+    const frames = (rms: number, ms: number) => {
+      level = rms
+      for (const end = now + ms; now < end; now += 16) tick?.(now)
+    }
+    const played: ArrayBuffer[] = []
+    const reply = { current: Promise.resolve({ ok: true, reply: 'Sono le dieci.' }) as Promise<{ ok: boolean; reply: string | null }> }
+    const deps = {
+      transcribe: vi.fn(async (_audio: Blob, ids: import('../voice/identity').VoiceIds) => ({ ids, text: 'che ore sono' })),
+      speak: vi.fn(async (_text: string, ids: import('../voice/identity').VoiceIds) => ({ ids, audio: new ArrayBuffer(8) })),
+      player: { play: vi.fn(async (audio: ArrayBuffer) => (played.push(audio), true)), stop: vi.fn() },
+      now: () => now,
+    }
+    const converse = vi.fn(() => reply.current)
+    const hook = renderHook(() => useVoiceSession({ converse, conversation: deps }))
+    const analyser = () => contexts.at(-1)!.analyser
+    const start = async () => {
+      await act(() => hook.result.current.startListening())
+      analyser().getFloatTimeDomainData.mockImplementation((data: Float32Array) => data.fill(level))
+    }
+    const utter = async () => {
+      frames(0.001, 1000)
+      frames(0.05, 600)
+      frames(0.001, 1000)
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+    }
+    return { hook, contexts, streams, deps, converse, reply, played, start, utter, frames }
+  }
+
+  it('tap -> listening -> utterance -> thinking -> speaking -> listening, mic kept open', async () => {
+    const p = pipeline()
+    await p.start()
+    expect(p.hook.result.current.voiceState).toBe('listening')
+    await p.utter()
+    expect(p.deps.transcribe).toHaveBeenCalledTimes(1)
+    const [audio, ids] = p.deps.transcribe.mock.calls[0]
+    expect(audio.type).toBe('audio/mp4')
+    expect(ids.client_id).toBe(localStorage.getItem('lyra.clientId'))
+    expect(p.converse).toHaveBeenCalledWith('che ore sono')
+    expect(p.played).toHaveLength(1)
+    expect(p.hook.result.current.voiceState).toBe('listening')
+    expect(p.streams[0].tracks[0].readyState).toBe('live') // same mic for the next turn
+    expect(FakeRecorder.live).toBe(0)
+  })
+
+  it('stopping during thinking releases everything and never plays the answer', async () => {
+    const p = pipeline()
+    let answer!: (value: { ok: boolean; reply: string | null }) => void
+    p.reply.current = new Promise((resolve) => {
+      answer = resolve
+    })
+    await p.start()
+    await p.utter()
+    expect(p.hook.result.current.voiceState).toBe('thinking')
+    act(() => p.hook.result.current.stopListening())
+    expect(p.hook.result.current.voiceState).toBe('off')
+    await act(async () => answer({ ok: true, reply: 'Tardi.' }))
+    expect(p.deps.speak).not.toHaveBeenCalled()
+    expect(p.played).toHaveLength(0)
+    expect(p.streams[0].tracks[0].stop).toHaveBeenCalled()
+    expect(p.contexts[0].close).toHaveBeenCalled()
+    expect(p.hook.result.current.voiceState).toBe('off')
+  })
+
+  it('backgrounding during a turn stops the mic and drops the answer', async () => {
+    const p = pipeline()
+    let answer!: (value: { ok: boolean; reply: string | null }) => void
+    p.reply.current = new Promise((resolve) => {
+      answer = resolve
+    })
+    await p.start()
+    await p.utter()
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    await act(async () => answer({ ok: true, reply: 'Tardi.' }))
+    expect(p.played).toHaveLength(0)
+    expect(p.hook.result.current.voiceState).toBe('off')
+  })
+
+  it('repeated sessions and turns do not leak streams, AudioContexts or recorders', async () => {
+    const p = pipeline()
+    const sessions = new Set<string>()
+    for (let i = 0; i < 3; i += 1) {
+      await p.start()
+      await p.utter()
+      await p.utter()
+      act(() => p.hook.result.current.stopListening())
+    }
+    for (const call of p.deps.transcribe.mock.calls) sessions.add(call[1].voice_session_id)
+    expect(sessions.size).toBe(3) // a fresh voice_session_id per mic conversation
+    expect(p.deps.transcribe).toHaveBeenCalledTimes(6)
+    expect(p.streams.flatMap((s) => s.tracks).every((t) => t.readyState === 'ended')).toBe(true)
+    expect(p.contexts.every((c) => c.state === 'closed')).toBe(true)
+    expect(FakeRecorder.live).toBe(0)
   })
 })
