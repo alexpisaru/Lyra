@@ -46,6 +46,8 @@ class Session:
     active_backend = "chromium"
     fallback_reason = None
     runner = ThreadPoolExecutor(max_workers=1)
+    _blocked = None
+    _blocked_subresources: list = []
 
     def __init__(self, *, title="Example Domain", url="https://example.com/", redirects=()):
         self.visited = []

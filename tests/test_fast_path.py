@@ -138,6 +138,8 @@ class StubSession:
     active_backend = "chromium"
     fallback_reason = None
     runner = ThreadPoolExecutor(max_workers=1)  # the real session runs tools on its own thread
+    _blocked = None
+    _blocked_subresources: list = []
 
     def __init__(self):
         self.visited = []

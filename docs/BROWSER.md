@@ -144,6 +144,19 @@ non è un successo.
   pagina locale 403 «Blocked by Lyra» (nessuna richiesta alla destinazione)
   invece di un abort, che in Chromium lascerebbe una pagina d'errore capace di
   interrompere la navigazione successiva.
+- Conseguenza del blocco per tipo di richiesta: una **navigazione del frame
+  principale** (o un suo redirect) verso un indirizzo vietato fa fallire
+  `browser_navigate`. Una **sottorisorsa** (immagine, script, fetch, beacon…) o la
+  navigazione di un **iframe** verso un indirizzo vietato viene solo annullata
+  (abort, nessuna richiesta inviata) e contata in `metadata.blocked_subresources`;
+  la pagina continua. Caso reale: il DNS locale restituisce `0.0.0.0` per i domini
+  di telemetria (`unagi.amazon.it`, `fls-eu.amazon.it`, `unagi-eu.amazon.com`,
+  `collector.github.com`), e prima questo faceva fallire tutta la pagina.
+  Un iframe bloccato non diventa una via alternativa verso la LAN: la sua richiesta
+  è annullata prima del fetch, esattamente come le altre.
+- Chiusura: il guard viene rimosso (`unroute_all(behavior="ignoreErrors")`) prima
+  di chiudere il contesto, e abort/dispose su una pagina già chiusa vengono
+  ignorati, così dopo un blocco non compaiono `TargetClosedError`.
 - WebRTC: `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` (Chromium)
   e init script che rimuove `RTCPeerConnection` & co. in pagine, iframe e popup
   (entrambi i backend). Verificato: senza queste misure una pagina invia STUN UDP

@@ -148,7 +148,10 @@ def test_real_browser_contract(monkeypatch):
 
             hits.clear()
             result = nav.execute(url=base + "/sub")
-            assert not result.success and "blocked destination" in result.content
+            # The page loads; only its subresource redirecting to a private path is
+            # aborted, and that path is never requested.
+            assert result.success, result.content
+            assert result.metadata["blocked_subresources"] >= 1
             assert "/private" not in hits, hits
         finally:
             server.shutdown()

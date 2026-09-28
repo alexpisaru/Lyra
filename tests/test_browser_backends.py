@@ -117,17 +117,30 @@ def test_noop_interception_is_rejected(playwright):
     ],
 )
 @pytest.mark.parametrize("backend", ["chromium", "obscura"])
-def test_private_requests_block_before_network(url, backend):
+@pytest.mark.parametrize("main_frame", [True, False])
+def test_private_requests_block_before_network(url, backend, main_frame):
     session = _BrowserSession(BrowserConfig(backend=backend))
+    session._page = MagicMock()
     route = MagicMock()
     route.request.url = url
+    route.request.is_navigation_request.return_value = main_frame
+    route.request.frame = session._page.main_frame if main_frame else MagicMock()
     try:
         session._guard(route)
-        route.abort.assert_called_once()
-        assert not route.fetch.called
-        with pytest.raises(RuntimeError, match="blocked"):
+        assert not route.fetch.called  # never reaches the network either way
+        if main_frame:
+            # Main-frame navigation: local 403 notice and the tool call fails.
+            route.fulfill.assert_called_once()
+            assert route.fulfill.call_args.kwargs["status"] == 403
+            with pytest.raises(RuntimeError, match="blocked"):
+                session.check_requests()
+        else:
+            # Subresource: only this request is aborted; the page goes on.
+            route.abort.assert_called_once()
             session.check_requests()
+            assert len(session._blocked_subresources) == 1
     finally:
+        session._page = None
         session.close()
 
 
@@ -174,7 +187,11 @@ def test_redirect_to_private_is_blocked_and_never_recorded(monkeypatch, location
         route.fetch.assert_called_once_with(max_redirects=0, timeout=10000)
         _assert_not_forwarded(route, main_frame=main_frame)
         response.dispose.assert_called_once()
-        assert "blocked destination" in session._blocked
+        if main_frame:
+            assert "blocked destination" in session._blocked
+        else:
+            assert session._blocked is None
+            assert "blocked destination" in session._blocked_subresources[0]
         assert session._redirect is None
     finally:
         session._page = None
@@ -189,7 +206,8 @@ def test_public_redirect_is_aborted_and_only_main_frame_is_recorded(monkeypatch,
     try:
         session._guard(route)
         _assert_not_forwarded(route, main_frame=main_frame)
-        assert "redirect" in session._blocked
+        recorded = session._blocked if main_frame else session._blocked_subresources[0]
+        assert "redirect" in recorded
         assert session._redirect == ("https://example.com/final" if main_frame else None)
     finally:
         session._page = None

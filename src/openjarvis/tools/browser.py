@@ -52,7 +52,11 @@ class _BrowserSession:
         self.active_backend = None
         self.fallback_reason = None
         self._failed = False
+        # A blocked main-frame navigation fails the tool call. A blocked subresource
+        # or sub-frame request is only aborted and counted: a page must not fail
+        # because a tracker domain is sinkholed to 0.0.0.0 by the local DNS.
         self._blocked = None
+        self._blocked_subresources: list[str] = []
         self._redirect = None
         self._probing = False
         self._probe_seen = False
@@ -145,21 +149,40 @@ class _BrowserSession:
                 raise ValueError(f"HTTP redirect to {target} not followed")
             route.fulfill(response=response)
         except Exception as exc:
-            self._blocked = str(exc)
             try:
-                if not self._is_main_navigation(route.request):
-                    raise LookupError
-                # An aborted main-frame navigation makes Chromium commit an error
-                # page later, interrupting the next goto. Serve a local notice
-                # instead; nothing is requested from the blocked destination.
-                route.fulfill(
-                    status=403, content_type="text/plain", body=f"Blocked by Lyra: {exc}"
-                )
-            except Exception:
-                route.abort()
+                main_navigation = self._is_main_navigation(route.request)
+            except Exception:  # target already gone: treat as the stricter case
+                main_navigation = True
+            if main_navigation:
+                self._blocked = str(exc)
+                try:
+                    # An aborted main-frame navigation makes Chromium commit an error
+                    # page later, interrupting the next goto. Serve a local notice
+                    # instead; nothing is requested from the blocked destination.
+                    route.fulfill(
+                        status=403, content_type="text/plain", body=f"Blocked by Lyra: {exc}"
+                    )
+                except Exception:
+                    self._abort(route)
+            else:
+                # Subresource, or navigation of a sub-frame (iframe): abort only this
+                # request. Nothing was sent to the destination, so a blocked iframe
+                # cannot be used to reach a private address; the page itself goes on.
+                self._blocked_subresources.append(f"{route.request.url[:200]} ({exc})")
+                self._abort(route)
         finally:
             if response is not None:
-                response.dispose()
+                try:
+                    response.dispose()
+                except Exception:  # page/context closed meanwhile: nothing left to free
+                    pass
+
+    @staticmethod
+    def _abort(route):
+        try:
+            route.abort()
+        except Exception:  # page/context closed meanwhile: the request is gone anyway
+            pass
 
     def _is_main_navigation(self, request):
         page = self._page
@@ -173,6 +196,7 @@ class _BrowserSession:
     def page(self):
         self._ensure_browser()
         self._blocked = self._redirect = None
+        self._blocked_subresources = []
         return self._page
 
     def check_requests(self):
@@ -212,6 +236,12 @@ class _BrowserSession:
     def _dispose_browser(self):
         try:
             if self._context is not None:
+                # Drop the guard first: in-flight route callbacks must not run against
+                # a closing context (TargetClosedError noise after a deliberate block).
+                try:
+                    self._context.unroute_all(behavior="ignoreErrors")
+                except Exception:
+                    pass
                 self._context.close()
         finally:
             self._context = self._page = None
@@ -323,6 +353,8 @@ class BrowserNavigateTool(BaseTool):
                     "redirects": redirects,
                     "backend": self._session.active_backend,
                     "fallback_reason": self._session.fallback_reason,
+                    # Subresources/iframes aborted by the SSRF guard (page still loaded).
+                    "blocked_subresources": len(self._session._blocked_subresources),
                 },
             )
         except ImportError:
