@@ -91,6 +91,29 @@ senza cornice; le onde blu restano solo come velatura in basso.
   schermo di circa l'altezza della barra di stato, lasciando una fascia vuota in
   fondo. `src/lib/standalone.ts` misura la differenza (solo in modalità app
   installata, massimo 120 px) e l'app si estende fino al bordo.
+## Lyra Voice — fase 1 (microfono)
+
+Solo l'infrastruttura del microfono: **niente** wake word, ascolto in background,
+STT, VAD, TTS o invio di audio. Il pulsante microfono sta nel composer della Chat.
+
+- `src/voice/types.ts`: stati `off | listening | thinking | speaking | interrupted |
+  error` (in fase 1 si usano off, listening, error), permesso, vincoli audio
+  (`echoCancellation`, `noiseSuppression`, `autoGainControl`).
+- `src/voice/useVoiceSession.ts`: `voiceState`, `micPermission`, `hasLiveTrack`,
+  `inputLevel`, `error`, `startListening()`, `stopListening()`. La UI non tocca mai
+  `MediaStream`. `getUserMedia` parte direttamente dal tocco; spegnere ferma ogni
+  traccia, scollega i nodi WebAudio e chiude l'`AudioContext` (microfono fisico
+  rilasciato, non solo muto). Pagina nascosta, `pagehide`, traccia terminata dal
+  sistema, smontaggio e il passaggio a un'altra vista (Home, Brain, Activity: lì
+  non c'è il pulsante) riportano a off; tornando in Chat non si riaccende da solo. Un permesso concesso dopo uno stop viene
+  rilasciato subito.
+- `src/voice/levelMeter.ts`: livello d'ingresso 0..1 da un `AnalyserNode` (mai
+  collegato alle casse; nulla registrato); senza `AudioContext` il livello resta 0.
+- Il microfono richiede un'origine sicura (HTTPS, es. Tailscale/Caddy): su HTTP in
+  LAN il browser non espone `getUserMedia` e il pulsante mostra l'errore.
+- `orbStateWithVoice` (`src/lib/orbState.ts`) combina stato runtime e voce per le
+  fasi successive; in fase 1 l'orb segue solo il runtime.
+
 ## Orb (Three.js/WebGL2)
 
 Un solo canvas che riempie l'hero per tutta la sessione; cambiando vista cambia solo

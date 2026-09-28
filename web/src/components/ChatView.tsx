@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { ChatController } from '../hooks/useChat'
+import type { VoiceSession } from '../voice/types'
 import type { LyraStatus, Pack } from '../types/api'
 import { prepareNote } from '../lib/notes'
 import { ChatComposer, PACK_LABEL } from './ChatComposer'
@@ -12,12 +13,13 @@ interface ChatViewProps {
   online: boolean
   /** what Lyra is doing right now (from the live runtime), shown while waiting */
   working?: string | null
+  voice?: VoiceSession
 }
 
 const ALL_PACKS: Pack[] = ['auto', 'chat', 'general', 'files', 'memory', 'knowledge', 'browser']
 
 /** Conversation as typography: discreet user line, Lyra's answer in the foreground. */
-export function ChatView({ chat, status, online, working }: ChatViewProps) {
+export function ChatView({ chat, status, online, working, voice }: ChatViewProps) {
   const end = useRef<HTMLDivElement>(null)
   const packs = status ? ALL_PACKS.filter((p) => p !== 'browser' || status.browser.enabled) : ALL_PACKS
 
@@ -80,6 +82,7 @@ export function ChatView({ chat, status, online, working }: ChatViewProps) {
           onPackChange={chat.setPack}
           packs={packs}
           pending={chat.pending}
+          voice={voice}
         />
         {chat.pack !== 'auto' ? <span className="sr-only">Pack attivo: {PACK_LABEL[chat.pack]}</span> : null}
       </div>

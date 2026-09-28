@@ -163,3 +163,18 @@ export const ORB_LABEL: Record<OrbState, string> = {
   speaking: 'Parla',
   interrupted: 'Interrotto',
 }
+
+/**
+ * Orb state once Lyra Voice is wired to it (later phases; not used in phase 1,
+ * where the orb follows the runtime only). Real work (thinking / tools / answer /
+ * errors / offline) always wins; the voice only colours an otherwise idle orb.
+ */
+export function orbStateWithVoice(
+  runtime: OrbState,
+  voice: 'off' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'error',
+): OrbState {
+  if (runtime !== 'idle') return runtime
+  if (voice === 'listening' || voice === 'speaking' || voice === 'interrupted') return voice
+  if (voice === 'thinking') return 'thinking'
+  return runtime
+}

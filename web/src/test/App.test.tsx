@@ -331,3 +331,45 @@ describe('Mobile', () => {
     Object.assign(window, { innerWidth: 1024, innerHeight: 768 })
   })
 })
+
+describe('Voice across views', () => {
+  function fakeMic() {
+    const tracks: { stop: ReturnType<typeof vi.fn>; readyState: string; addEventListener: () => void }[] = []
+    const getUserMedia = vi.fn(async () => {
+      const track = {
+        readyState: 'live',
+        stop: vi.fn(() => {
+          track.readyState = 'ended'
+        }),
+        addEventListener: () => undefined,
+      }
+      tracks.push(track)
+      return { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream
+    })
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
+    vi.stubGlobal('AudioContext', undefined)
+    return { tracks, getUserMedia }
+  }
+
+  it.each(['Home', 'Brain', 'Activity'])(
+    'Chat LISTENING -> %s turns the microphone OFF and back in Chat it stays off',
+    async (target) => {
+      const { tracks, getUserMedia } = fakeMic()
+      const { user, nav } = setup({ '/api/knowledge/notes': () => json({ notes: [], skipped: 0 }) })
+      await nav('Chat')
+      await user.click(screen.getByRole('button', { name: 'Attiva il microfono' }))
+      expect(document.querySelector('.app')).toHaveAttribute('data-voice', 'listening')
+
+      await nav(target)
+      expect(document.querySelector('.app')).toHaveAttribute('data-voice', 'off')
+      expect(tracks).toHaveLength(1)
+      expect(tracks[0].stop).toHaveBeenCalledTimes(1)
+      expect(tracks[0].readyState).toBe('ended')
+
+      await nav('Chat')
+      expect(document.querySelector('.app')).toHaveAttribute('data-voice', 'off')
+      expect(screen.getByRole('button', { name: 'Attiva il microfono' })).toHaveAttribute('aria-pressed', 'false')
+      expect(getUserMedia).toHaveBeenCalledTimes(1) // not restarted
+    },
+  )
+})

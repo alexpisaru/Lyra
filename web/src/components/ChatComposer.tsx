@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { Pack } from '../types/api'
+import type { VoiceSession } from '../voice/types'
 import { BrainIcon, GlobeIcon, PlusIcon, SendIcon } from './icons'
+import { MicButton } from './MicButton'
 
 export const PACK_LABEL: Record<Pack, string> = {
   auto: 'Auto',
@@ -31,6 +33,8 @@ interface ChatComposerProps {
   packs: Pack[]
   disabled?: boolean
   pending?: boolean
+  /** microphone session (Lyra Voice); no button when absent */
+  voice?: VoiceSession
 }
 
 /**
@@ -46,6 +50,7 @@ export function ChatComposer({
   packs,
   disabled,
   pending,
+  voice,
 }: ChatComposerProps) {
   const [menu, setMenu] = useState(false)
   const input = useRef<HTMLTextAreaElement>(null)
@@ -165,6 +170,7 @@ export function ChatComposer({
             <GlobeIcon size={21} />
           </button>
         ) : null}
+        {voice ? <MicButton voice={voice} /> : null}
         <button type="submit" className="composer-send" disabled={!canSend} aria-label="Invia">
           <SendIcon size={20} />
         </button>

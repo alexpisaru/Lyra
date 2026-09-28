@@ -10,6 +10,7 @@ import { useChat } from './hooks/useChat'
 import { useLyraState, type LyraStateOptions } from './hooks/useLyraState'
 import { useElementSize } from './hooks/useElementSize'
 import { useViewport } from './hooks/useViewport'
+import { useVoiceSession } from './voice/useVoiceSession'
 import { captionTop, orbFrame } from './lib/frames'
 import { workCaption } from './lib/orbState'
 
@@ -24,6 +25,8 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   const lyra = useLyraState(live)
   const chat = useChat()
   const viewport = useViewport()
+  // Microphone session (Lyra Voice, phase 1): opened only by the mic button.
+  const voice = useVoiceSession()
   const heroRef = useRef<HTMLDivElement>(null)
   const hero = useElementSize(heroRef)
   const [view, setView] = useState<View>(initialView)
@@ -31,6 +34,13 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
   const [seenActivity, setSeenActivity] = useState(0)
   // Connection rows are bookkeeping; only real Lyra activity lights the badge.
   const activityCount = lyra.activity.filter((entry) => entry.kind !== 'connection').length
+
+  // The mic control lives in the Chat composer: never leave a live microphone
+  // behind in a view without it. Coming back to Chat does not restart it.
+  const { stopListening } = voice
+  useEffect(() => {
+    if (view !== 'chat') stopListening()
+  }, [view, stopListening])
 
   const navigate = (next: View) => {
     // Entering or leaving Activity marks everything so far as seen.
@@ -68,6 +78,7 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
     <div
       className="app"
       data-view={view}
+      data-voice={voice.voiceState}
       data-keyboard={viewport.keyboard > 0 || undefined}
       style={{ '--kb': `${viewport.keyboard}px` } as React.CSSProperties}
     >
@@ -96,7 +107,7 @@ export default function App({ live }: { live?: LyraStateOptions } = {}) {
             </p>
           </section>
         ) : null}
-        {view === 'chat' ? <ChatView chat={chat} status={lyra.status} online={lyra.online} working={work} /> : null}
+        {view === 'chat' ? <ChatView chat={chat} status={lyra.status} online={lyra.online} working={work} voice={voice} /> : null}
         {view === 'brain' ? <BrainView knowledgeEnabled={lyra.status ? lyra.status.knowledge.enabled : null} /> : null}
         {view === 'activity' ? (
           <ActivityView entries={lyra.activity} connection={lyra.connection} onClear={lyra.clearActivity} />

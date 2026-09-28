@@ -60,6 +60,23 @@ export const PaperclipIcon = (p: IconProps) => (
   </Icon>
 )
 
+export const MicIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="9" y="3.5" width="6" height="11" rx="3" />
+    <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
+    <path d="M12 18v2.5" />
+  </Icon>
+)
+
+export const MicOffIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M15 9.4V6.5a3 3 0 0 0-5.6-1.5" />
+    <path d="M9 9v2.5a3 3 0 0 0 4.9 2.3" />
+    <path d="M5.5 11.5a6.5 6.5 0 0 0 10.3 5.3M18.3 13.4c.1-.6.2-1.2.2-1.9" />
+    <path d="M12 18v2.5M4 4l16 16" />
+  </Icon>
+)
+
 export const ChevronIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="m9.5 6 6 6-6 6" />
