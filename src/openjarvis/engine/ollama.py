@@ -120,6 +120,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         host: str | None = None,
         *,
         timeout: float = 1800.0,
+        keep_alive: str | None = None,
     ) -> None:
         # Priority: explicit host (from config.toml) > OLLAMA_HOST env var > default
         if host is None:
@@ -130,6 +131,8 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         # wedged token read is bounded by ``timeout`` instead of hanging the
         # single event loop for the httpx default.
         self._timeout = timeout
+        # Sent as ``keep_alive`` on every chat request when set; None keeps Ollama's default.
+        self._keep_alive = keep_alive
         # Injection seam for tests: an ``httpx.MockTransport`` swapped in here drives
         # the async stream path with no real Ollama server. ``None`` in production so
         # httpx uses its default networking.
@@ -168,6 +171,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                 kwargs=kwargs,
             ),
         }
+        self._apply_keep_alive(payload)
         # Disable extended thinking by default (Qwen3.5 etc.).
         # When enabled, thinking tokens consume the entire budget and
         # the visible content comes back empty.
@@ -283,6 +287,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                 kwargs=kwargs,
             ),
         }
+        self._apply_keep_alive(payload)
         # Mirror generate()'s default: disable extended thinking unless the
         # caller opted in. Qwen3/etc. with thinking on can stall the visible
         # stream for 60+ seconds before any tokens reach the client, which
@@ -386,6 +391,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         tools = kwargs.get("tools")
         if tools:
             payload["tools"] = tools
+        self._apply_keep_alive(payload)
 
         async for chunk in self._run_stream(payload, messages, retry_without_tools=bool(tools)):
             yield chunk
@@ -500,6 +506,10 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             # disconnect) map to a clean error; the set is kept narrow so
             # cancellation still propagates.
             raise EngineConnectionError(f"Ollama not reachable at {self._host}") from exc
+
+    def _apply_keep_alive(self, payload: Dict[str, Any]) -> None:
+        if self._keep_alive:
+            payload["keep_alive"] = self._keep_alive
 
     def list_models(self) -> List[str]:
         try:

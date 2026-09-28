@@ -229,7 +229,8 @@ def test_pack_wiring_and_separate_memory(tmp_path):
         assert system.memory_backend.count() == 0
         assert (tmp_path / "vault/test.md").read_text() == "Petalo"
         system.engine.generate = MagicMock(return_value={"content": "inventato"})
-        assert system.ask("Cerca nelle note Petalo")["metadata"]["missing_tool_use"]
+        # Not an explicit search phrase: the model decides, and must use a tool.
+        assert system.ask("Parlami delle note su Petalo")["metadata"]["missing_tool_use"]
 
 
 @pytest.mark.parametrize(

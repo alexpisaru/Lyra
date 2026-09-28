@@ -5,6 +5,9 @@
 host = "http://192.168.1.252:11434"
 model = "openbmb/minicpm5-2b:q8_0"
 timeout = 120.0
+# Tiene MiniCPM in RAM tra una richiesta e l'altra (default Ollama: 5m, poi
+# caricamento a freddo). Durata Ollama: "30m", "2h", "-1" = sempre, "" = default Ollama.
+keep_alive = "30m"
 
 [intelligence]
 temperature = 0.1

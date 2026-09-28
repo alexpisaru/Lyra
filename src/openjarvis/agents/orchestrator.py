@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Callable, List, Optional
 
 from openjarvis.agents._stubs import AgentContext, AgentResult, ToolUsingAgent
+from openjarvis.agents.fast_path import FOLLOWUP_TOOLS, FastPath
 from openjarvis.core.events import EventBus
 from openjarvis.core.registry import AgentRegistry
 from openjarvis.core.types import Message, Role, ToolCall, ToolResult
@@ -48,6 +50,7 @@ class OrchestratorAgent(ToolUsingAgent):
         max_prompt_bytes: int = 12000,
         require_tool_use: bool = False,
         before_tool_call: Optional[Callable[[str, dict[str, Any]], bool]] = None,
+        fast_path: Optional[FastPath] = None,
     ) -> None:
         super().__init__(
             engine,
@@ -74,14 +77,72 @@ class OrchestratorAgent(ToolUsingAgent):
             raise ValueError("Lite accepts at most five tools per turn")
         self._system_prompt = system_prompt
         self._before_tool_call = before_tool_call
+        # Known first tool call (agents/fast_path.py): skips the first model call only.
+        self._fast_path = (
+            fast_path
+            if fast_path and fast_path.tool in {t.spec.name for t in self._tools}
+            else None
+        )
+        # Profiling (opt-in via run(profile=True)): monotonic marks + Ollama timings.
+        self._timing: dict[str, Any] = {}
 
     def run(
         self,
         input: str,
         context: Optional[AgentContext] = None,
+        *,
+        profile: bool = False,
         **kwargs: Any,
     ) -> AgentResult:
-        return self._run_function_calling(input, context, **kwargs)
+        self._timing = {"t0": time.perf_counter(), "llm_calls": [], "tools": []}
+        result = self._run_function_calling(input, context, **kwargs)
+        if self._fast_path is not None:
+            result.metadata["fast_path"] = self._fast_path.tool
+        if profile:
+            result.metadata["timing"] = self._timing_report()
+        return result
+
+    # ------------------------------------------------------------------
+    # Profiling: minimal, in-process, no telemetry framework
+    # ------------------------------------------------------------------
+
+    def _since(self) -> float:
+        return round(time.perf_counter() - self._timing["t0"], 3)
+
+    def _timing_report(self) -> dict[str, Any]:
+        report = {k: v for k, v in self._timing.items() if k != "t0"}
+        report["total_seconds"] = self._since()
+        return report
+
+    def _timed_generate(self, messages, phase: str, **gen_kwargs: Any) -> dict:
+        start = self._since()
+        result = self._generate(messages, **gen_kwargs)
+        engine = result.get("engine_timing") or {}
+        self._timing["llm_calls"].append(
+            {
+                "phase": phase,
+                "start": start,
+                "end": self._since(),
+                "tools_offered": len(gen_kwargs.get("tools") or []),
+                "tool_calls": [tc.get("name") for tc in result.get("tool_calls") or []],
+                "prompt_tokens_evaluated": (result.get("usage") or {}).get(
+                    "prompt_tokens_evaluated"
+                ),
+                "completion_tokens": (result.get("usage") or {}).get("completion_tokens"),
+                "load_seconds": round(engine.get("load_duration", 0) / 1e9, 3),
+                "prompt_eval_seconds": round(engine.get("prompt_eval_duration", 0) / 1e9, 3),
+                "eval_seconds": round(engine.get("eval_duration", 0) / 1e9, 3),
+            }
+        )
+        return result
+
+    def _timed_execute(self, tc: ToolCall) -> ToolResult:
+        start = self._since()
+        result = self._executor.execute(tc)
+        self._timing["tools"].append(
+            {"tool": tc.name, "start": start, "end": self._since(), "success": result.success}
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Governance hook
@@ -144,6 +205,7 @@ class OrchestratorAgent(ToolUsingAgent):
 
         all_tool_results: list[ToolResult] = []
         turns = 0
+        fast_path = self._fast_path
         executed_calls = 0
         stored_notes = set()
         tool_repair_attempted = False
@@ -178,7 +240,25 @@ class OrchestratorAgent(ToolUsingAgent):
                     turns=turns - 1,
                     metadata={"context_limit": True},
                 )
-            result = self._generate(messages, **gen_kwargs)
+            if fast_path is not None and turns == 1:
+                # The obvious first call, as if the model had chosen it; everything
+                # below (governance, loop guard, ToolExecutor, events) is unchanged.
+                result = {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "name": fast_path.tool,
+                            "arguments": json.dumps(fast_path.arguments, ensure_ascii=False),
+                        }
+                    ],
+                }
+                # Afterwards the model sees only the pack's read-only follow-up tool:
+                # a small prompt, and it can still read further instead of guessing.
+                followup = set(FOLLOWUP_TOOLS.get(fast_path.tool, ()))
+                openai_tools = [t for t in openai_tools if t["function"]["name"] in followup]
+            else:
+                phase = "after_tool" if all_tool_results else "first"
+                result = self._timed_generate(messages, phase, **gen_kwargs)
 
             # Accumulate token usage
             usage = result.get("usage", {})
@@ -320,7 +400,7 @@ class OrchestratorAgent(ToolUsingAgent):
                         )
                         continue
 
-                tool_result = self._executor.execute(tc)
+                tool_result = self._timed_execute(tc)
                 if tool_result.metadata.get("timeout"):
                     all_tool_results.append(tool_result)
                     return AgentResult(

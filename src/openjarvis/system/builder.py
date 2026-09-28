@@ -13,7 +13,11 @@ class SystemBuilder:
 
     def build(self):
         config = self._config.validate()
-        engine = OllamaEngine(config.engine.host, timeout=config.engine.timeout)
+        engine = OllamaEngine(
+            config.engine.host,
+            timeout=config.engine.timeout,
+            keep_alive=config.engine.keep_alive or None,
+        )
         memory = None
         browser_session = None
         knowledge = None

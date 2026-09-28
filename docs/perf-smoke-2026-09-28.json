@@ -1,0 +1,944 @@
+{
+ "date": "2026-09-28",
+ "ollama": "0.34.4",
+ "model": "openbmb/minicpm5-2b:q8_0",
+ "host": "CT Ollama (CPU)",
+ "note": "scripts/perf_smoke.py, one JSON object per request; runs in this order",
+ "runs": {
+  "0_before_cold": [
+   {
+    "ollama_loaded_before": []
+   },
+   {
+    "test": "chat",
+    "pack": "general",
+    "total_seconds": 20.28,
+    "route_seconds": 0.0014,
+    "pre_tool_llm_seconds": null,
+    "tool_seconds": 0,
+    "post_tool_llm_seconds": null,
+    "llm_seconds": 20.27,
+    "fast_path": null,
+    "tool_calls": [],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 20.265,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 394,
+      "completion_tokens": 6,
+      "load_seconds": 2.817,
+      "prompt_eval_seconds": 16.668,
+      "eval_seconds": 0.723
+     }
+    ],
+    "answer": "Lyra è online."
+   },
+   {
+    "test": "calculator",
+    "pack": "general",
+    "total_seconds": 6.42,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 3.5,
+    "tool_seconds": 0.005,
+    "post_tool_llm_seconds": 2.92,
+    "llm_seconds": 6.42,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "calculator",
+      "seconds": 0.005,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.498,
+      "tools_offered": 1,
+      "tool_calls": [
+       "calculator"
+      ],
+      "prompt_tokens_evaluated": 390,
+      "completion_tokens": 18,
+      "load_seconds": 0.004,
+      "prompt_eval_seconds": 1.007,
+      "eval_seconds": 2.45
+     },
+     {
+      "phase": "after_tool",
+      "start": 3.504,
+      "end": 6.423,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 424,
+      "completion_tokens": 8,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 1.904,
+      "eval_seconds": 0.96
+     }
+    ],
+    "answer": "17 * 23 = 391"
+   },
+   {
+    "test": "knowledge",
+    "pack": "knowledge",
+    "total_seconds": 43.7,
+    "route_seconds": 0.0003,
+    "pre_tool_llm_seconds": 27.78,
+    "tool_seconds": 0.028,
+    "post_tool_llm_seconds": 15.89,
+    "llm_seconds": 43.66,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "notes_search",
+      "seconds": 0.028,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.001,
+      "end": 27.777,
+      "tools_offered": 4,
+      "tool_calls": [
+       "notes_search"
+      ],
+      "prompt_tokens_evaluated": 656,
+      "completion_tokens": 24,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 24.277,
+      "eval_seconds": 3.44
+     },
+     {
+      "phase": "after_tool",
+      "start": 27.805,
+      "end": 43.692,
+      "tools_offered": 4,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 905,
+      "completion_tokens": 31,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 11.156,
+      "eval_seconds": 4.674
+     }
+    ],
+    "answer": "Il colore segreto del collaudo Lyra è **ametista**, secondo la nota `collaudo-lyra.md`."
+   },
+   {
+    "test": "browser",
+    "pack": "browser",
+    "total_seconds": 57.91,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 38.51,
+    "tool_seconds": 1.189,
+    "post_tool_llm_seconds": 18.2,
+    "llm_seconds": 56.72,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "browser_navigate",
+      "seconds": 1.189,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 38.512,
+      "tools_offered": 4,
+      "tool_calls": [
+       "browser_navigate"
+      ],
+      "prompt_tokens_evaluated": 886,
+      "completion_tokens": 21,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 35.288,
+      "eval_seconds": 3.141
+     },
+     {
+      "phase": "after_tool",
+      "start": 39.701,
+      "end": 57.905,
+      "tools_offered": 4,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 1248,
+      "completion_tokens": 12,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 16.388,
+      "eval_seconds": 1.757
+     }
+    ],
+    "answer": "Il titolo della pagina è **Example Domain**."
+   },
+   {
+    "ollama_loaded_after": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T19:45:51.900527394Z"
+     }
+    ]
+   }
+  ],
+  "1_after_cold": [
+   {
+    "fast_path": true,
+    "keep_alive": "30m"
+   },
+   {
+    "ollama_loaded_before": []
+   },
+   {
+    "test": "chat",
+    "pack": "general",
+    "total_seconds": 20.41,
+    "route_seconds": 0.0012,
+    "pre_tool_llm_seconds": null,
+    "tool_seconds": 0,
+    "post_tool_llm_seconds": null,
+    "llm_seconds": 20.4,
+    "fast_path": null,
+    "tool_calls": [],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 20.398,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 394,
+      "completion_tokens": 6,
+      "load_seconds": 3.075,
+      "prompt_eval_seconds": 16.533,
+      "eval_seconds": 0.751
+     }
+    ],
+    "answer": "Lyra è online."
+   },
+   {
+    "test": "calculator",
+    "pack": "general",
+    "total_seconds": 6.56,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 3.42,
+    "tool_seconds": 0.004,
+    "post_tool_llm_seconds": 3.13,
+    "llm_seconds": 6.55,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "calculator",
+      "seconds": 0.004,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.421,
+      "tools_offered": 1,
+      "tool_calls": [
+       "calculator"
+      ],
+      "prompt_tokens_evaluated": 390,
+      "completion_tokens": 18,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 1.019,
+      "eval_seconds": 2.36
+     },
+     {
+      "phase": "after_tool",
+      "start": 3.425,
+      "end": 6.555,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 424,
+      "completion_tokens": 8,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 2.089,
+      "eval_seconds": 0.993
+     }
+    ],
+    "answer": "17 * 23 = 391"
+   },
+   {
+    "test": "knowledge",
+    "pack": "knowledge",
+    "total_seconds": 30.62,
+    "route_seconds": 0.0002,
+    "pre_tool_llm_seconds": 0,
+    "tool_seconds": 0.017,
+    "post_tool_llm_seconds": 30.59,
+    "llm_seconds": 30.59,
+    "fast_path": "notes_search",
+    "tool_calls": [
+     {
+      "tool": "notes_search",
+      "seconds": 0.017,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "after_tool",
+      "start": 0.018,
+      "end": 30.612,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 694,
+      "completion_tokens": 31,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 26.018,
+      "eval_seconds": 4.499
+     }
+    ],
+    "answer": "Il colore segreto del collaudo Lyra è **ametista**, secondo la nota `collaudo-lyra.md`."
+   },
+   {
+    "test": "browser",
+    "pack": "browser",
+    "total_seconds": 35.37,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 0,
+    "tool_seconds": 1.067,
+    "post_tool_llm_seconds": 34.3,
+    "llm_seconds": 34.3,
+    "fast_path": "browser_navigate",
+    "tool_calls": [
+     {
+      "tool": "browser_navigate",
+      "seconds": 1.067,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "after_tool",
+      "start": 1.067,
+      "end": 35.366,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 831,
+      "completion_tokens": 12,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 32.599,
+      "eval_seconds": 1.616
+     }
+    ],
+    "answer": "Il titolo della pagina è **Example Domain**."
+   },
+   {
+    "ollama_loaded_after": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:21:25.00446904Z"
+     }
+    ]
+   }
+  ],
+  "2_before_warm": [
+   {
+    "fast_path": false,
+    "keep_alive": null
+   },
+   {
+    "ollama_loaded_before": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:21:25.00446904Z"
+     }
+    ]
+   },
+   {
+    "test": "chat",
+    "pack": "general",
+    "total_seconds": 12.72,
+    "route_seconds": 0.0016,
+    "pre_tool_llm_seconds": null,
+    "tool_seconds": 0,
+    "post_tool_llm_seconds": null,
+    "llm_seconds": 12.7,
+    "fast_path": null,
+    "tool_calls": [],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 12.704,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 394,
+      "completion_tokens": 6,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 11.949,
+      "eval_seconds": 0.688
+     }
+    ],
+    "answer": "Lyra è online."
+   },
+   {
+    "test": "calculator",
+    "pack": "general",
+    "total_seconds": 6.36,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 3.48,
+    "tool_seconds": 0.003,
+    "post_tool_llm_seconds": 2.88,
+    "llm_seconds": 6.35,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "calculator",
+      "seconds": 0.003,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.477,
+      "tools_offered": 1,
+      "tool_calls": [
+       "calculator"
+      ],
+      "prompt_tokens_evaluated": 390,
+      "completion_tokens": 18,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 1.005,
+      "eval_seconds": 2.433
+     },
+     {
+      "phase": "after_tool",
+      "start": 3.481,
+      "end": 6.356,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 424,
+      "completion_tokens": 8,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 1.868,
+      "eval_seconds": 0.96
+     }
+    ],
+    "answer": "17 × 23 = 391"
+   },
+   {
+    "test": "knowledge",
+    "pack": "knowledge",
+    "total_seconds": 38.36,
+    "route_seconds": 0.0001,
+    "pre_tool_llm_seconds": 22.36,
+    "tool_seconds": 0.014,
+    "post_tool_llm_seconds": 15.98,
+    "llm_seconds": 38.34,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "notes_search",
+      "seconds": 0.014,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 22.362,
+      "tools_offered": 4,
+      "tool_calls": [
+       "notes_search"
+      ],
+      "prompt_tokens_evaluated": 656,
+      "completion_tokens": 24,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 18.844,
+      "eval_seconds": 3.453
+     },
+     {
+      "phase": "after_tool",
+      "start": 22.377,
+      "end": 38.353,
+      "tools_offered": 4,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 905,
+      "completion_tokens": 31,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 11.152,
+      "eval_seconds": 4.763
+     }
+    ],
+    "answer": "Il colore segreto del collaudo Lyra è **ametista**, secondo la nota `collaudo-lyra.md`."
+   },
+   {
+    "test": "browser",
+    "pack": "browser",
+    "total_seconds": 57.71,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 38.43,
+    "tool_seconds": 0.948,
+    "post_tool_llm_seconds": 18.33,
+    "llm_seconds": 56.76,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "browser_navigate",
+      "seconds": 0.948,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 38.426,
+      "tools_offered": 4,
+      "tool_calls": [
+       "browser_navigate"
+      ],
+      "prompt_tokens_evaluated": 886,
+      "completion_tokens": 21,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 35.188,
+      "eval_seconds": 3.155
+     },
+     {
+      "phase": "after_tool",
+      "start": 39.374,
+      "end": 57.708,
+      "tools_offered": 4,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 1248,
+      "completion_tokens": 12,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 16.43,
+      "eval_seconds": 1.847
+     }
+    ],
+    "answer": "Il titolo della pagina è **Example Domain**."
+   },
+   {
+    "ollama_loaded_after": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:23:21.828432239Z"
+     }
+    ]
+   }
+  ],
+  "3_after_warm": [
+   {
+    "fast_path": true,
+    "keep_alive": "30m"
+   },
+   {
+    "ollama_loaded_before": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:23:21.828432239Z"
+     }
+    ]
+   },
+   {
+    "test": "chat",
+    "pack": "general",
+    "total_seconds": 12.71,
+    "route_seconds": 0.0013,
+    "pre_tool_llm_seconds": null,
+    "tool_seconds": 0,
+    "post_tool_llm_seconds": null,
+    "llm_seconds": 12.7,
+    "fast_path": null,
+    "tool_calls": [],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 12.699,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 394,
+      "completion_tokens": 6,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 11.904,
+      "eval_seconds": 0.697
+     }
+    ],
+    "answer": "Lyra è online."
+   },
+   {
+    "test": "calculator",
+    "pack": "general",
+    "total_seconds": 6.49,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 3.53,
+    "tool_seconds": 0.004,
+    "post_tool_llm_seconds": 2.95,
+    "llm_seconds": 6.48,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "calculator",
+      "seconds": 0.004,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.532,
+      "tools_offered": 1,
+      "tool_calls": [
+       "calculator"
+      ],
+      "prompt_tokens_evaluated": 390,
+      "completion_tokens": 18,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 1.15,
+      "eval_seconds": 2.346
+     },
+     {
+      "phase": "after_tool",
+      "start": 3.536,
+      "end": 6.489,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 424,
+      "completion_tokens": 8,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 1.864,
+      "eval_seconds": 1.037
+     }
+    ],
+    "answer": "17 × 23 = 391"
+   },
+   {
+    "test": "knowledge",
+    "pack": "knowledge",
+    "total_seconds": 30.61,
+    "route_seconds": 0.0002,
+    "pre_tool_llm_seconds": 0,
+    "tool_seconds": 0.016,
+    "post_tool_llm_seconds": 30.59,
+    "llm_seconds": 30.59,
+    "fast_path": "notes_search",
+    "tool_calls": [
+     {
+      "tool": "notes_search",
+      "seconds": 0.016,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "after_tool",
+      "start": 0.016,
+      "end": 30.603,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 694,
+      "completion_tokens": 31,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 26.171,
+      "eval_seconds": 4.36
+     }
+    ],
+    "answer": "Il colore segreto del collaudo Lyra è **ametista**, secondo la nota `collaudo-lyra.md`."
+   },
+   {
+    "test": "browser",
+    "pack": "browser",
+    "total_seconds": 2.79,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 0,
+    "tool_seconds": 0.949,
+    "post_tool_llm_seconds": 1.84,
+    "llm_seconds": 1.84,
+    "fast_path": "browser_navigate",
+    "tool_calls": [
+     {
+      "tool": "browser_navigate",
+      "seconds": 0.949,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "after_tool",
+      "start": 0.949,
+      "end": 2.785,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 831,
+      "completion_tokens": 12,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 0.151,
+      "eval_seconds": 1.598
+     }
+    ],
+    "answer": "Il titolo della pagina è **Example Domain**."
+   },
+   {
+    "ollama_loaded_after": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:24:16.13047926Z"
+     }
+    ]
+   }
+  ],
+  "4_before_warm": [
+   {
+    "fast_path": false,
+    "keep_alive": null
+   },
+   {
+    "ollama_loaded_before": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:24:16.13047926Z"
+     }
+    ]
+   },
+   {
+    "test": "chat",
+    "pack": "general",
+    "total_seconds": 1.9,
+    "route_seconds": 0.0012,
+    "pre_tool_llm_seconds": null,
+    "tool_seconds": 0,
+    "post_tool_llm_seconds": null,
+    "llm_seconds": 1.89,
+    "fast_path": null,
+    "tool_calls": [],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 1.887,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 394,
+      "completion_tokens": 6,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 1.122,
+      "eval_seconds": 0.682
+     }
+    ],
+    "answer": "Lyra è online."
+   },
+   {
+    "test": "calculator",
+    "pack": "general",
+    "total_seconds": 6.52,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 3.67,
+    "tool_seconds": 0.003,
+    "post_tool_llm_seconds": 2.85,
+    "llm_seconds": 6.52,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "calculator",
+      "seconds": 0.003,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.666,
+      "tools_offered": 1,
+      "tool_calls": [
+       "calculator"
+      ],
+      "prompt_tokens_evaluated": 390,
+      "completion_tokens": 18,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 0.966,
+      "eval_seconds": 2.665
+     },
+     {
+      "phase": "after_tool",
+      "start": 3.669,
+      "end": 6.523,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 424,
+      "completion_tokens": 8,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 1.839,
+      "eval_seconds": 0.963
+     }
+    ],
+    "answer": "17 × 23 = 391"
+   },
+   {
+    "test": "knowledge",
+    "pack": "knowledge",
+    "total_seconds": 19.73,
+    "route_seconds": 0.0002,
+    "pre_tool_llm_seconds": 3.87,
+    "tool_seconds": 0.027,
+    "post_tool_llm_seconds": 15.83,
+    "llm_seconds": 19.7,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "notes_search",
+      "seconds": 0.027,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.865,
+      "tools_offered": 4,
+      "tool_calls": [
+       "notes_search"
+      ],
+      "prompt_tokens_evaluated": 656,
+      "completion_tokens": 24,
+      "load_seconds": 0.004,
+      "prompt_eval_seconds": 0.32,
+      "eval_seconds": 3.484
+     },
+     {
+      "phase": "after_tool",
+      "start": 3.892,
+      "end": 19.725,
+      "tools_offered": 4,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 905,
+      "completion_tokens": 31,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 11.239,
+      "eval_seconds": 4.54
+     }
+    ],
+    "answer": "Il colore segreto del collaudo Lyra è **ametista**, secondo la nota `collaudo-lyra.md`."
+   },
+   {
+    "test": "browser",
+    "pack": "browser",
+    "total_seconds": 23.23,
+    "route_seconds": 0.0,
+    "pre_tool_llm_seconds": 3.56,
+    "tool_seconds": 0.958,
+    "post_tool_llm_seconds": 18.71,
+    "llm_seconds": 22.27,
+    "fast_path": null,
+    "tool_calls": [
+     {
+      "tool": "browser_navigate",
+      "seconds": 0.958,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "first",
+      "start": 0.0,
+      "end": 3.56,
+      "tools_offered": 4,
+      "tool_calls": [
+       "browser_navigate"
+      ],
+      "prompt_tokens_evaluated": 886,
+      "completion_tokens": 21,
+      "load_seconds": 0.003,
+      "prompt_eval_seconds": 0.307,
+      "eval_seconds": 3.16
+     },
+     {
+      "phase": "after_tool",
+      "start": 4.518,
+      "end": 23.227,
+      "tools_offered": 4,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 1248,
+      "completion_tokens": 12,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 16.906,
+      "eval_seconds": 1.747
+     }
+    ],
+    "answer": "Il titolo della pagina è **Example Domain**."
+   },
+   {
+    "ollama_loaded_after": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:25:09.257480872Z"
+     }
+    ]
+   }
+  ],
+  "5_after_knowledge": [
+   {
+    "fast_path": true,
+    "keep_alive": "30m"
+   },
+   {
+    "ollama_loaded_before": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:25:09.257480872Z"
+     }
+    ]
+   },
+   {
+    "test": "knowledge",
+    "pack": "knowledge",
+    "total_seconds": 4.67,
+    "route_seconds": 0.0013,
+    "pre_tool_llm_seconds": 0,
+    "tool_seconds": 0.016,
+    "post_tool_llm_seconds": 4.63,
+    "llm_seconds": 4.63,
+    "fast_path": "notes_search",
+    "tool_calls": [
+     {
+      "tool": "notes_search",
+      "seconds": 0.016,
+      "ok": true
+     }
+    ],
+    "llm_calls": [
+     {
+      "phase": "after_tool",
+      "start": 0.016,
+      "end": 4.651,
+      "tools_offered": 1,
+      "tool_calls": [],
+      "prompt_tokens_evaluated": 694,
+      "completion_tokens": 31,
+      "load_seconds": 0.002,
+      "prompt_eval_seconds": 0.143,
+      "eval_seconds": 4.378
+     }
+    ],
+    "answer": "Il colore segreto del collaudo Lyra è **ametista**, secondo la nota `collaudo-lyra.md`."
+   },
+   {
+    "ollama_loaded_after": [
+     {
+      "name": "openbmb/minicpm5-2b:q8_0",
+      "expires_at": "2026-09-28T20:25:15.646320616Z"
+     }
+    ]
+   }
+  ]
+ }
+}

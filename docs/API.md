@@ -72,6 +72,8 @@ status_cache_seconds = 30.0
 ```
 
 `complete=false` corrisponde all'exit code 2 della CLI (es. `missing_tool_use`).
+`metadata.fast_path` (es. `"notes_search"`) compare solo quando la prima chiamata
+tool è stata scelta da un fast-path deterministico ([PERFORMANCE.md](PERFORMANCE.md)).
 Errore del modello/runtime → **502**. Lyra occupata → **409**.
 
 ### Knowledge

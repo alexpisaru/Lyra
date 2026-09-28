@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
@@ -22,6 +23,10 @@ class IntelligenceConfig:
 class EngineConfig:
     host: str = "http://127.0.0.1:11434"
     timeout: float = 120.0
+    # How long Ollama keeps the model in memory after a request (Ollama duration,
+    # e.g. "30m", "2h", "-1" = forever, "0" = unload at once). Empty = Ollama's
+    # own default (5 minutes): an always-on assistant would then pay a cold load.
+    keep_alive: str = "30m"
     # Optional spelling of intelligence.model next to the host; one value wins.
     model: str = ""
 
@@ -33,6 +38,8 @@ class AgentConfig:
     max_tool_output_chars: int = 1200
     max_prompt_bytes: int = 12000
     history_chars: int = 2000
+    # Deterministic first tool call for unambiguous intents (agents/fast_path.py).
+    fast_path: bool = True
     default_system_prompt: str = (
         "Sei Lyra, assistente personale locale. Rispondi nella lingua dell'utente. "
         "Usa solo i tool disponibili, uno alla volta, con argomenti JSON esatti. "
@@ -183,6 +190,8 @@ class JarvisConfig:
             raise ValueError("Memory tools require memory.enabled=true")
         if not self.tools.workspace.strip():
             raise ValueError("tools.workspace must be a non-empty directory")
+        if self.engine.keep_alive and not re.fullmatch(r"-1|0|\d+(\.\d+)?(ms|s|m|h)?", self.engine.keep_alive):
+            raise ValueError('engine.keep_alive must be an Ollama duration like "30m", "-1" or "0"')
         if not self.engine.host.startswith(("http://", "https://")):
             raise ValueError("engine.host must be an Ollama HTTP(S) endpoint")
         if not self.intelligence.model.strip():

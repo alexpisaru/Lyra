@@ -138,8 +138,10 @@ def test_chat_auto_pack_uses_existing_router(lyra):
     client, system, _ = lyra()
     body = client.post("/api/chat", json={"message": "Quanto fa 12*9?"}).json()
     assert body["pack"] == "general" and body["metadata"]["tools"] == ["calculator"]
-    body = client.post("/api/chat", json={"message": "Cerca nei miei appunti Petalo"}).json()
+    # An open question about the notes is left to the model (no fast path).
+    body = client.post("/api/chat", json={"message": "Cosa dicono i miei appunti su Petalo?"}).json()
     assert body["pack"] == "knowledge" and body["metadata"]["tools"] == list(PACKS["knowledge"])
+    assert "fast_path" not in body["metadata"]
     # Knowledge requires a tool call: an answer without one is marked incomplete.
     assert body["complete"] is False and body["metadata"]["missing_tool_use"]
 

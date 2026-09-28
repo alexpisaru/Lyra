@@ -332,6 +332,24 @@ modello. Pack oltre 5 tool, tool sconosciuti e chiavi di config sconosciute
 fanno fallire l'avvio. Argomenti JSON non validi o sconosciuti vengono rifiutati
 prima dell'esecuzione. Richieste miste richiedono passi separati e `--pack`.
 
+## Latenza: keep_alive e fast-path
+
+Sul CT il modello legge il prompt a ~25 token/s: il costo di una richiesta è
+dominato dai token *nuovi* da leggere (schemi dei tool, cronologia, risultati),
+non dai tool. Dettagli e misure: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
+- `engine.keep_alive = "30m"` (default): Lyra chiede a Ollama di tenere MiniCPM in
+  RAM per 30 minuti dall'ultima richiesta. Senza, Ollama lo scarica dopo 5 minuti
+  e la richiesta successiva paga il caricamento a freddo e una cache vuota.
+  Verifica: `curl http://<host-ollama>:11434/api/ps` (campo `expires_at`).
+- `agent.fast_path = true` (default): per poche frasi inequivocabili la prima
+  chiamata tool è nota e Lyra salta la prima inferenza del modello:
+  «Cerca nei miei appunti …» → `notes_search`, «Apri https://…» → `browser_navigate`.
+  Il tool passa comunque dal ToolExecutor (validazione, SSRF, confinamento del
+  vault, eventi) e la risposta la scrive sempre il modello, che può ancora
+  leggere oltre (`notes_read` / `browser_extract`). Frasi ambigue restano al modello.
+- Benchmark opt-in: `python scripts/perf_smoke.py --config config/lite-chromium.toml`.
+
 ## Limiti runtime
 
 Default: 6 generazioni, 5 chiamate tool sequenziali, output tool 1200 caratteri,

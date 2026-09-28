@@ -3,8 +3,10 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import Lock
+import time
 from typing import Any
 from openjarvis.agents._stubs import AgentContext
+from openjarvis.agents.fast_path import detect_fast_path
 from openjarvis.agents.orchestrator import OrchestratorAgent
 from openjarvis.core.types import Conversation, Message, Role
 from openjarvis.tools.packs import PACK_HINTS, select_tools
@@ -22,12 +24,20 @@ class JarvisSystem:
     _lock: Any = field(default_factory=Lock, repr=False)
     _closed: bool = False
 
-    def ask(self, query, *, pack=None, prior_messages=None, confirm_callback=None):
+    def ask(self, query, *, pack=None, prior_messages=None, confirm_callback=None, profile=False):
         # One local user/session per system; browser state and SQLite are shared.
         with self._lock:
             if self._closed:
                 raise RuntimeError("JarvisSystem is closed")
+            started = time.perf_counter()
             selected, tools = select_tools(query, pack, self.tools)
+            route_seconds = time.perf_counter() - started
+            cfg = self.config
+            fast_path = (
+                detect_fast_path(query, selected, {t.spec.name for t in tools})
+                if cfg.agent.fast_path
+                else None
+            )
             cfg = self.config
             agent = OrchestratorAgent(
                 self.engine,
@@ -45,9 +55,14 @@ class JarvisSystem:
                 max_prompt_bytes=cfg.agent.max_prompt_bytes,
                 require_tool_use=selected in ("memory", "knowledge", "files", "browser"),
                 engine_options={"num_ctx": cfg.intelligence.num_ctx},
+                fast_path=fast_path,
             )
             history = self._history(prior_messages or [], cfg.agent.history_chars)
-            result = agent.run(query, AgentContext(conversation=Conversation(messages=history)))
+            result = agent.run(
+                query, AgentContext(conversation=Conversation(messages=history)), profile=profile
+            )
+            if profile:
+                result.metadata["timing"]["route_seconds"] = round(route_seconds, 4)
             return {
                 "content": result.content,
                 "tool_results": result.tool_results,
